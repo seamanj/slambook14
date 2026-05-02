@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.5)
+project( geometry  )
+
+# set( CMAKE_BUILD_TYPE "Release" )
+set( CMAKE_CXX_FLAGS "-O3" )
+
+find_package(Eigen3 REQUIRED)
+
+# in osx and brew install
+# include_directories( /usr/local/Cellar/eigen/3.3.3/include/eigen3 )
+
+add_executable( eigenGeometry eigenGeometry.cpp )
+target_link_libraries(eigenGeometry Eigen3::Eigen)

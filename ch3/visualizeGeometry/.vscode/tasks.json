@@ -1,0 +1,101 @@
+{
+    "version": "2.0.0",
+    "windows": {
+        "options": {
+            "shell": {
+                "executable": "powershell"
+            }
+        }
+    },
+    "type": "shell",
+    "options": {
+        "cwd": "${workspaceRoot}"
+    },
+    "tasks": [
+        {
+            "label": "cmake",
+            "linux": {
+                "command": "cmake -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug .."
+            },
+            "windows": {
+                "command": "cmake -G 'MinGW Makefiles' .."
+            },
+            "type": "shell",
+            "dependsOn": "_makebuildfolder",
+            "options": {
+                "cwd": "${workspaceRoot}/build"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "make",
+            "linux": {
+                "command": "make -j 8"
+            },
+            "windows": {
+                "command": "mingw32-make -j 4"
+            },
+            "options": {
+                "cwd": "${workspaceRoot}/build"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "isBuildCommand": true,
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "_makebuildfolder",
+            "type": "shell",
+            "linux": {
+                "command": "mkdir -p ${workspaceFolder}/build"
+            },
+            "windows": {
+                "command": "mkdir -Force ${workspaceFolder}/build"
+            },
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "copy_raw",
+            "type": "shell",
+            "linux": {
+                "command": "mkdir -p ${workspaceFolder}/build"
+            },
+            "windows": {
+                "command": "Copy ${workspaceFolder}/*.raw ${workspaceFolder}/build "
+            }
+        },
+        {
+            "label": "run",
+            "args": ["32"],
+            "windows": {
+                "command": "${command:cmake.launchTargetPath}"
+            },
+            "options": {
+                "cwd": "${workspaceRoot}/build"
+            },
+        },
+        {
+            "label": "runwithbuild",
+            "args": ["32"],
+            "windows": {
+                "command": "${command:cmake.launchTargetPath}"
+            },
+            "dependsOrder": "sequence", //tj : make sure exe deps in order
+            "dependsOn": ["cmake", "make", "copy_raw"],
+            "options": {
+                "cwd": "${workspaceRoot}/build"
+            },
+        }
+    ]
+}
