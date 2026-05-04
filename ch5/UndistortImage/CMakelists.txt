@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.10)
+project(undistortImage)
+
+# 为使用 OpenCV，需要使用find_package命令找到它
+set(OpenCV_DIR "D:\\Software\\msys64\\ucrt64\\lib\\cmake\\opencv4")
+find_package(OpenCV REQUIRED)
+
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+add_executable(undistortImage undistortImage.cpp)
+target_link_libraries(undistortImage ${OpenCV_LIBS})
+
