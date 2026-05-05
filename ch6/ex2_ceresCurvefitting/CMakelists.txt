@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.10)
+project( gaussNewton )
+
+# set( CMAKE_BUILD_TYPE "Release" )
+set( CMAKE_CXX_FLAGS "-O3" )
+
+find_package(Eigen3 REQUIRED)
+
+message(STATUS "Eigen version: ${EIGEN3_VERSION_MAJOR}.${EIGEN3_VERSION_MINOR}.${EIGEN3_VERSION_PATCH}")
+
+# in osx and brew install
+# include_directories( /usr/local/Cellar/eigen/3.3.3/include/eigen3 )
+
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+
+find_package(Ceres REQUIRED)
+
+
+
+
+include_directories(${CERES_INCLUDE_DIRS})
+
+add_executable( ceresCurveFitting ceresCurveFitting.cpp )
+target_link_libraries(ceresCurveFitting Eigen3::Eigen ${OpenCV_LIBS} ${CERES_LIBRARIES})
