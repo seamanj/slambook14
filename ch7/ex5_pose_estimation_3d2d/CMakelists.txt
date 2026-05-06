@@ -1,0 +1,19 @@
+cmake_minimum_required(VERSION 3.10)
+project( pose_estimation_3d2d )
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
+
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+find_package(Eigen3 REQUIRED)
+find_package(Sophus REQUIRED)
+
+find_package(G2O REQUIRED)
+include_directories(${G2O_INCLUDE_DIRS})
+
+add_executable( pose_estimation_3d2d pose_estimation_3d2d.cpp )
+target_link_libraries(pose_estimation_3d2d ${OpenCV_LIBS} Eigen3::Eigen Sophus::Sophus g2o::core g2o::stuff)
