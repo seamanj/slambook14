@@ -1,7 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <sophus/se3.hpp>
 #include <format>
-#include <pangolin/pangolin.h>
+// #include <pangolin/pangolin.h>
 
 using namespace std;
 
