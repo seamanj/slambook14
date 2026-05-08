@@ -31,8 +31,9 @@
 
   ```cmake
   find_package(Eigen3 3.4.0 REQUIRED)
-
+  ```
   修改为
 
   ```cmake
   find_package(Eigen3 REQUIRED)
+  ```
