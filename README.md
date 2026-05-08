@@ -37,3 +37,38 @@
   ```cmake
   find_package(Eigen3 REQUIRED)
   ```
+
+
+- **g2o**  
+  用于图优化（Graph Optimization），主要用于 BA 等结构化优化问题。
+
+---
+
+## 兼容性说明
+
+以上版本在当前工程环境中经过测试可正常编译运行。
+
+如遇到编译或链接问题，请重点检查以下几点：
+
+- 系统中是否存在多个版本的 Eigen（容易冲突）
+- Ceres 与 g2o 是否使用了**同一版本 Eigen 编译**
+- MSYS2 / MinGW 环境下是否混用了不同工具链（UCRT64 / MINGW64）
+- 是否存在系统自带库与手动编译库冲突
+
+---
+
+## 构建环境
+
+- Windows 11  
+- MSYS2（UCRT64 或 MINGW64）  
+- GCC / MinGW-w64 工具链  
+- CMake ≥ 3.15  
+- IDE：VS Code  
+
+---
+
+## 参考资料
+
+Windows 上使用 MSYS2 + VSCode + MinGW 的配置方法可参考：
+
+👉 https://www.bilibili.com/video/BV1L94y1N7e6
