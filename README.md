@@ -2,6 +2,8 @@
 
 本项目使用的第三方库版本如下：
 
+---
+
 ## 核心依赖
 
 - **Eigen**：5.0.1  
@@ -35,8 +37,16 @@
 
 ## 构建环境
 
-本项目推荐在以下环境中编译：
+- Windows 11  
+- MSYS2（UCRT64 或 MINGW64）  
+- GCC / MinGW-w64 工具链  
+- CMake ≥ 3.15  
+- IDE：VS Code  
 
-- MSYS2（UCRT64 或 MINGW64）
-- GCC / MinGW-w64 工具链
-- CMake ≥ 3.15
+---
+
+## 参考资料
+
+在 Windows 上使用 MSYS2 + VSCode + MinGW 的配置方法可以参考：
+
+👉 https://www.bilibili.com/video/BV1L94y1N7e6
