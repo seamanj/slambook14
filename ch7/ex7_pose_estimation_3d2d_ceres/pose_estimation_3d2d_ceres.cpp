@@ -401,9 +401,9 @@ void bundleAdjustmentG2O(
   pose = vertex_pose->estimate();
 }
 
-struct ReprojectionError
+struct PnPError
 {
-  ReprojectionError(
+  PnPError(
       const Eigen::Vector3d &point_3d,
       const Eigen::Vector2d &observation,
       const Eigen::Matrix3d &K)
@@ -524,10 +524,10 @@ void bundleAdjustmentCeres(
   {
     ceres::CostFunction *cost_function =
         new ceres::AutoDiffCostFunction<
-            ReprojectionError,
+            PnPError,
             2,
             6>(
-            new ReprojectionError(
+            new PnPError(
                 points_3d[i],
                 points_2d[i],
                 K_eigen));
