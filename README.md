@@ -1,6 +1,6 @@
 # 依赖库版本说明
 
-本项目使用的第三方库版本如下：
+本项目使用的第三方库版本如下（截止到：2026年5月8日）。
 
 ---
 
@@ -15,10 +15,17 @@
 
 ## 说明
 
-- **Eigen**：用于矩阵运算与线性代数计算，是整个优化与几何计算的基础库。  
-- **Ceres Solver**：用于非线性优化（如 PnP、BA、ICP 等问题）。  
-- **Sophus**：用于李群表示（SE(3)、SO(3)），便于位姿更新与指数映射。  
-- **g2o**：用于图优化（Graph Optimization），主要用于 BA 等结构化优化问题。  
+- **Eigen**  
+  用于矩阵运算与线性代数计算，是整个优化与几何计算的基础库。
+
+- **Ceres Solver**  
+  用于非线性优化（如 PnP、BA、ICP 等问题）。
+
+- **Sophus**  
+  用于李群表示（SE(3)、SO(3)），便于位姿更新与指数映射。
+
+- **g2o**  
+  用于图优化（Graph Optimization），主要用于 BA 等结构化优化问题。
 
 ---
 
@@ -47,6 +54,6 @@
 
 ## 参考资料
 
-在 Windows 上使用 MSYS2 + VSCode + MinGW 的配置方法可以参考：
+Windows 上使用 MSYS2 + VSCode + MinGW 的配置方法可参考：
 
 👉 https://www.bilibili.com/video/BV1L94y1N7e6
