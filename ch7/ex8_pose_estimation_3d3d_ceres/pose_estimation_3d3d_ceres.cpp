@@ -17,6 +17,7 @@
 #include <sophus/se3.hpp>
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
+
 using namespace std;
 using namespace cv;
 
@@ -137,7 +138,13 @@ int main(int argc, char **argv)
 
   cout << "3d-3d pairs: " << pts1.size() << endl;
   Mat R, t;
+  chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
   pose_estimation_3d3d(pts1, pts2, R, t);
+  chrono::steady_clock::time_point t2 = chrono::steady_clock::now();
+  chrono::duration<double> time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+  cout << "SVD method costs time: " << time_used.count() << " seconds." << endl;
+
+
   cout << "ICP via SVD results: " << endl;
   cout << "R = " << R << endl;
   cout << "t = " << t << endl;
@@ -145,9 +152,11 @@ int main(int argc, char **argv)
   cout << "t_inv = " << -R.t() * t << endl;
 
   cout << "calling bundle adjustment" << endl;
-
+  t1 = chrono::steady_clock::now();
   bundleAdjustment(pts1, pts2, R, t);
-
+  t2 = chrono::steady_clock::now();
+  time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+  cout << "g2o optimization costs time: " << time_used.count() << " seconds." << endl;
   // verify p1 = R * p2 + t
   for (int i = 0; i < 5; i++)
   {
@@ -159,8 +168,13 @@ int main(int argc, char **argv)
   }
 
   cout << "calling bundle adjustment by ceres" << endl;
-
+  t1 = chrono::steady_clock::now();
   bundleAdjustmentCeres(pts1, pts2, R, t);
+  t2 = chrono::steady_clock::now();
+  time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+  cout << "ceres optimization costs time: " << time_used.count() << " seconds." << endl;
+
+  
   cout << "ICP via Ceres bundle adjustment results: " << endl;
   cout << "R = " << R << endl;
   cout << "t = " << t << endl;
@@ -309,12 +323,10 @@ void bundleAdjustment(
     optimizer.addEdge(edge);
   }
 
-  chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
+
   optimizer.initializeOptimization();
   optimizer.optimize(10);
-  chrono::steady_clock::time_point t2 = chrono::steady_clock::now();
-  chrono::duration<double> time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
-  cout << "optimization costs time: " << time_used.count() << " seconds." << endl;
+  
 
   cout << endl
        << "after optimization:" << endl;
@@ -410,7 +422,7 @@ void bundleAdjustmentCeres(const vector<Point3f> &pts1,
     problem.AddResidualBlock(cost_function, nullptr, camera);
   }
 
-  chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
+ 
   ceres::Solver::Options options;
   options.linear_solver_type = ceres::DENSE_QR;
   options.minimizer_progress_to_stdout = true;
@@ -426,11 +438,11 @@ void bundleAdjustmentCeres(const vector<Point3f> &pts1,
 
   ceres::AngleAxisToRotationMatrix(
       camera,
-      R_ceres);
+      R_ceres); // tj : R_ceres is in column-major order
 
-  R = (Mat_<double>(3, 3) << R_ceres[0], R_ceres[1], R_ceres[2],
-       R_ceres[3], R_ceres[4], R_ceres[5],
-       R_ceres[6], R_ceres[7], R_ceres[8]);
+  R = (Mat_<double>(3, 3) << R_ceres[0], R_ceres[3], R_ceres[6],
+       R_ceres[1], R_ceres[4], R_ceres[7],
+       R_ceres[2], R_ceres[5], R_ceres[8]);
 
   // ----------------------------
   // translation

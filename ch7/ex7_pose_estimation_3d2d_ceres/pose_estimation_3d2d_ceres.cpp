@@ -126,8 +126,10 @@ int main(int argc, char **argv)
   time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
   cout << "solve pnp by g2o cost time: " << time_used.count() << " seconds." << endl;
 
+ 
   cout << "calling bundle adjustment by ceres" << endl;
   Sophus::SE3d pose_ceres; // 默认为初始位姿为单位矩阵, 这是可行的，但可能不是最优的（如果真实位姿离单位阵很远，可能需要更多迭代）。建议：先用 OpenCV 的 solvePnP 结果作为初始值.
+  t1 = chrono::steady_clock::now();
   bundleAdjustmentCeres(pts_3d_eigen, pts_2d_eigen, K, pose_ceres);
   t2 = chrono::steady_clock::now();
   time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
