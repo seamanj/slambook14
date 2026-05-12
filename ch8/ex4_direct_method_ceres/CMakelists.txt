@@ -1,0 +1,40 @@
+cmake_minimum_required(VERSION 3.10)
+project(direct_method_ceres)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ========== 可选：如果还有问题，使用 Debug 模式 ==========
+# set(CMAKE_BUILD_TYPE Debug)
+
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+
+if(MSVC OR (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+# 对于 MinGW/GCC，添加更好的调试符号和内联优化
+# add_compile_options(-O2 -g -finline-functions -fno-inline-small-functions)
+add_compile_options(-O2)
+# 如果仍有问题，尝试降低优化级别
+# add_compile_options(-O1)
+endif()
+
+find_package(Eigen3 3.4.0 REQUIRED)
+find_package(Sophus REQUIRED)
+
+find_package(Ceres REQUIRED)
+include_directories(${CERES_INCLUDE_DIRS})
+
+find_package(G2O REQUIRED)
+include_directories(${G2O_INCLUDE_DIRS})
+
+add_executable(direct_method_ceres direct_method_ceres.cpp)
+
+target_link_libraries(direct_method_ceres 
+    ${OpenCV_LIBS} 
+    Eigen3::Eigen  
+    Sophus::Sophus 
+    g2o::core 
+    g2o::stuff 
+    ${CERES_LIBRARIES}
+)

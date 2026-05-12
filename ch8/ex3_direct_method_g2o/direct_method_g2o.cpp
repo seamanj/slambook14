@@ -12,6 +12,8 @@
 #include <g2o/solvers/dense/linear_solver_dense.h>
 #include <sophus/se3.hpp>
 #include <g2o/core/robust_kernel_impl.h>
+#include <g2o/solvers/eigen/linear_solver_eigen.h>
+#include <g2o/core/optimization_algorithm_levenberg.h>
 using namespace std;
 
 typedef vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>> VecVector2d;
@@ -139,191 +141,166 @@ inline float GetPixelValue(const cv::Mat &img, float x, float y)
         (1 - xx) * yy * data[img.step] +
         xx * yy * data[img.step + 1]);
 }
-
 class VertexPose : public g2o::BaseVertex<6, Sophus::SE3d>
 {
 public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-    virtual void setToOriginImpl() override
-    {
-        _estimate = Sophus::SE3d();
-    }
+  virtual void setToOriginImpl() override
+  {
+    _estimate = Sophus::SE3d();
+  }
 
-    /// left multiplication on SE3
-    virtual void oplusImpl(const double *update) override
-    {
-        Eigen::Matrix<double, 6, 1> update_eigen;
-        update_eigen << update[0], update[1], update[2], update[3], update[4], update[5];
-        _estimate = Sophus::SE3d::exp(update_eigen) * _estimate;
-    }
+  // SE3 左乘更新：T <- exp(δξ) * T
+  virtual void oplusImpl(const double *update) override
+  {
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> dx(update);
+    _estimate = Sophus::SE3d::exp(dx) * _estimate;
+  }
 
-    virtual bool read(istream &in) override { return true; }
-
-    virtual bool write(ostream &out) const override { return true; }
+  virtual bool read(std::istream &) override { return true; }
+  virtual bool write(std::ostream &) const override { return true; }
 };
+
+
 /// g2o edge with 3x3 patch
-class EdgeDirectPoseOnly : public g2o::BaseUnaryEdge<9, Eigen::Matrix<double, 9, 1>, VertexPose>
+class EdgeDirectPoseOnly :
+    public g2o::BaseUnaryEdge<9, Eigen::Matrix<double,9,1>, VertexPose>
 {
 public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-    // 使用 const cv::Mat& 引用传递
-    EdgeDirectPoseOnly(const Eigen::Vector2d &uv1, const Eigen::Matrix3d &K, double d1,
-                       const cv::Mat &img1, const cv::Mat &img2)
-        : uv1_(uv1), K_(K), d1_(d1), img1_(img1), img2_(img2)
+  EdgeDirectPoseOnly(
+      const Eigen::Vector2d &uv_ref,
+      const Eigen::Matrix3d &K,
+      double depth,
+      const cv::Mat &img1,
+      const cv::Mat &img2)
+      : uv_ref_(uv_ref),
+        K_(K),
+        img1_(img1),
+        img2_(img2)
+  {
+    K_inv_ = K_.inverse();
+
+    // 3D point in ref frame
+    p_ref_ = depth * (K_inv_ * Eigen::Vector3d(uv_ref_[0], uv_ref_[1], 1.0));
+  }
+
+  // =========================
+  // compute error (patch energy)
+  // =========================
+  void computeError() override
+  {
+    const VertexPose *v = static_cast<const VertexPose *>(_vertices[0]);
+    Sophus::SE3d T = v->estimate();
+
+    Eigen::Vector3d p_cur = T * p_ref_;
+
+    if (p_cur[2] <= 0)
     {
-        // 计算3D点
-        p1_ = d1_ * K_.inverse() * Eigen::Vector3d(uv1_[0], uv1_[1], 1);
-
-        // 提取3x3 patch的测量值（参考帧的9个像素）
-        // measurement_.resize(9);
-
-         measurement_.setZero();   // ⭐ FIX 1 (NO resize)
-
-        int idx = 0;
-        for (int x = -1; x <= 1; x++)
-        {
-            for (int y = -1; y <= 1; y++)
-            {
-                float px = uv1_[0] + x;
-                float py = uv1_[1] + y;
-                // 边界检查
-                if (px >= 1 && px < img1_.cols - 1 && py >= 1 && py < img1_.rows - 1)
-                {
-                    measurement_[idx] = GetPixelValue(img1_, px, py);
-                }
-                else
-                {
-                    measurement_[idx] = 0;
-                }
-                idx++;
-            }
-        }
+      _error.setZero();
+      setLevel(1);
+      return;
     }
 
-    virtual void computeError() override
+    Eigen::Vector3d uv = K_ * p_cur;
+    double u = uv[0] / uv[2];
+    double v_ = uv[1] / uv[2];
+
+    if (u < 1 || u >= img2_.cols - 1 ||
+        v_ < 1 || v_ >= img2_.rows - 1)
     {
-        setLevel(0);
-        const VertexPose *T21 = static_cast<const VertexPose *>(_vertices[0]);
-
-        Eigen::Vector3d p2 = T21->estimate() * p1_;
-        Eigen::Vector3d uv2 = K_ * p2;
-        uv2 /= uv2[2];
-
-        // 检查投影点是否在图像内（考虑patch大小）
-        if (uv2[0] < 1 || uv2[0] >= img2_.cols - 1 ||
-            uv2[1] < 1 || uv2[1] >= img2_.rows - 1)
-        {
-            _error.setZero();
-            setLevel(1);
-            return;
-        }
-
-        // 计算3x3 patch的误差
-        int idx = 0;
-        for (int x = -1; x <= 1; x++)
-        {
-            for (int y = -1; y <= 1; y++)
-            {
-                float u = uv2[0] + x;
-                float v = uv2[1] + y;
-
-                // 边界检查
-                if (u >= 1 && u < img2_.cols - 1 && v >= 1 && v < img2_.rows - 1)
-                {
-                    double pixel_value = GetPixelValue(img2_, u, v);
-                    _error[idx] = measurement_[idx] - pixel_value;
-                }
-                else
-                {
-                    _error[idx] = 0;
-                }
-                idx++;
-            }
-        }
+      _error.setZero();
+      setLevel(1);
+      return;
     }
 
-    virtual void linearizeOplus() override
+    int idx = 0;
+
+    for (int x = -1; x <= 1; x++)
+    for (int y = -1; y <= 1; y++)
     {
-        VertexPose *pose = static_cast<VertexPose *>(_vertices[0]);
-        Sophus::SE3d T21 = pose->estimate();
+      double I_ref = GetPixelValue(img1_,
+                                   uv_ref_[0] + x,
+                                   uv_ref_[1] + y);
 
-        Eigen::Vector3d p2 = T21 * p1_;
-        Eigen::Vector3d uv2 = K_ * p2;
-        uv2 /= uv2[2];
+      double I_cur = GetPixelValue(img2_,
+                                   u + x,
+                                   v_ + y);
 
-        if (uv2[0] < 1 || uv2[0] >= img2_.cols - 1 ||
-            uv2[1] < 1 || uv2[1] >= img2_.rows - 1)
-        {
-            _jacobianOplusXi = Eigen::Matrix<double, 9, 6>::Zero();
-            setLevel(1);
-            return;
-        }
+      _error[idx++] = I_ref - I_cur;
+    }
+  }
 
-        double fx = K_(0, 0);
-        double fy = K_(1, 1);
-        double X = p2[0], Y = p2[1], Z = p2[2];
-        double Z_inv = 1.0 / Z;
-        double Z2_inv = Z_inv * Z_inv;
+  // =========================
+  // Jacobian
+  // =========================
+  virtual void linearizeOplus() override
+  {
+    const VertexPose *pose = static_cast<const VertexPose *>(_vertices[0]);
+    Sophus::SE3d T = pose->estimate();
 
-        // 像素对位姿的雅可比 (2x6)
-        Eigen::Matrix<double, 2, 6> J_pixel_xi;
-        J_pixel_xi(0, 0) = fx * Z_inv;
-        J_pixel_xi(0, 1) = 0;
-        J_pixel_xi(0, 2) = -fx * X * Z2_inv;
-        J_pixel_xi(0, 3) = -fx * X * Y * Z2_inv;
-        J_pixel_xi(0, 4) = fx + fx * X * X * Z2_inv;
-        J_pixel_xi(0, 5) = -fx * Y * Z_inv;
+    Eigen::Vector3d p_cur = T * p_ref_;
 
-        J_pixel_xi(1, 0) = 0;
-        J_pixel_xi(1, 1) = fy * Z_inv;
-        J_pixel_xi(1, 2) = -fy * Y * Z2_inv;
-        J_pixel_xi(1, 3) = -fy - fy * Y * Y * Z2_inv;
-        J_pixel_xi(1, 4) = fy * X * Y * Z2_inv;
-        J_pixel_xi(1, 5) = fy * X * Z_inv;
+    double X = p_cur[0];
+    double Y = p_cur[1];
+    double Z = p_cur[2];
 
-        // 对patch内每个像素计算雅可比
-        _jacobianOplusXi = Eigen::Matrix<double, 9, 6>::Zero();
+    double fx = K_(0,0);
+    double fy = K_(1,1);
 
-        int idx = 0;
-        for (int x = -1; x <= 1; x++)
-        {
-            for (int y = -1; y <= 1; y++)
-            {
-                float u = uv2[0] + x;
-                float v = uv2[1] + y;
+    double invZ = 1.0 / Z;
+    double invZ2 = invZ * invZ;
 
-                if (u >= 1 && u < img2_.cols - 1 && v >= 1 && v < img2_.rows - 1)
-                {
-                    // 图像梯度
-                    Eigen::Vector2d J_img_pixel;
-                    J_img_pixel(0) = 0.5 * (GetPixelValue(img2_, u + 1, v) - GetPixelValue(img2_, u - 1, v));
-                    J_img_pixel(1) = 0.5 * (GetPixelValue(img2_, u, v + 1) - GetPixelValue(img2_, u, v - 1));
+    // projection Jacobian (2x6)
+    Eigen::Matrix<double,2,6> J_proj;
 
-                    // 雅可比：1x6 = (1x2) * (2x6)
-                    _jacobianOplusXi.row(idx) = -1.0 * (J_img_pixel.transpose() * J_pixel_xi).transpose();
-                }
-                else
-                {
-                    _jacobianOplusXi.row(idx).setZero();
-                }
-                idx++;
-            }
-        }
+    J_proj <<
+      fx*invZ, 0, -fx*X*invZ2,
+      -fx*X*Y*invZ2, fx + fx*X*X*invZ2, -fx*Y*invZ,
+
+      0, fy*invZ, -fy*Y*invZ2,
+      -fy - fy*Y*Y*invZ2, fy*X*Y*invZ2, fy*X*invZ;
+
+    // image gradient (central difference at projected point)
+    double u = fx * X / Z + K_(0,2);
+    double v = fy * Y / Z + K_(1,2);
+
+    Eigen::Matrix<double,9,2> J_img;
+
+    int idx = 0;
+
+    for (int x = -1; x <= 1; x++)
+    for (int y = -1; y <= 1; y++)
+    {
+      double gx = 0.5 * (
+          GetPixelValue(img2_, u + 1 + x, v + y) -
+          GetPixelValue(img2_, u - 1 + x, v + y));
+
+      double gy = 0.5 * (
+          GetPixelValue(img2_, u + x, v + 1 + y) -
+          GetPixelValue(img2_, u + x, v - 1 + y));
+
+      J_img(idx,0) = gx;
+      J_img(idx,1) = gy;
+      idx++;
     }
 
-    bool read(istream &in) override { return true; }
-    bool write(ostream &out) const override { return true; }
+    _jacobianOplusXi = -J_img * J_proj;
+  }
 
-protected:
-    Eigen::Matrix3d K_;
-    const cv::Mat &img1_; // 引用传递，不拷贝
-    const cv::Mat &img2_; // 引用传递，不拷贝
-    Eigen::Vector2d uv1_;
-    double d1_;
-    Eigen::Vector3d p1_;
-    Eigen::Matrix<double, 9, 1> measurement_; // 9维测量向量
+  virtual bool read(std::istream &) override { return true; }
+  virtual bool write(std::ostream &) const override { return true; }
+
+private:
+  Eigen::Vector2d uv_ref_;
+  Eigen::Vector3d p_ref_;
+
+  Eigen::Matrix3d K_, K_inv_;
+
+  const cv::Mat &img1_;
+  const cv::Mat &img2_;
 };
 
 int main(int argc, char **argv)
@@ -349,6 +326,24 @@ int main(int argc, char **argv)
         depth_ref.push_back(depth);
         pixels_ref.push_back(Eigen::Vector2d(x, y));
     }
+cv::Mat img1_show;
+  cv::cvtColor(left_img, img1_show, cv::COLOR_GRAY2BGR);
+
+  int valid_count = 0;
+  for (size_t i = 0; i < pixels_ref.size(); ++i)
+  {
+    auto p_ref = pixels_ref[i];
+  
+    // 检查投影点是否在图像内
+    if (p_ref[0] > 0 && p_ref[0] < left_img.cols &&
+        p_ref[1] > 0 && p_ref[1] < left_img.rows)
+    {
+      // 绘制投影点（绿色圆点）
+      cv::circle(img1_show, cv::Point2f(p_ref[0], p_ref[1]), 2, cv::Scalar(0, 250, 0), 2);
+      valid_count++;
+    }
+  }
+  cv::imshow("origin", img1_show);
 
     // estimates 01~05.png's pose using this information
     Sophus::SE3d T_cur_ref_original;
@@ -367,10 +362,24 @@ int main(int argc, char **argv)
             cerr << "Failed to load image: " << filename << endl;
             continue;
         }
+
+        chrono::steady_clock::time_point t1, t2;
+        chrono::duration<double> time_used;
         // try single layer by uncomment this line
+        cout << "optimize by native g-n" << endl;
+        t1 = chrono::steady_clock::now();
         DirectPoseEstimationSingleLayer(left_img, img, pixels_ref, depth_ref, T_cur_ref_original);
+        t2 = chrono::steady_clock::now();
+        time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+        cout << "native g-n optimization costs time: " << time_used.count() << " seconds." << endl;
         // DirectPoseEstimationMultiLayer(left_img, img, pixels_ref, depth_ref, T_cur_ref); // tj : 每次都从left_img开始估计，T_cur_ref会被更新为当前帧相对于left_img的变换
+        cout << "optimize by g2o" << endl;
+        t1 = chrono::steady_clock::now();
         DirectPoseEstimationSingleLayerG2O(left_img, img, pixels_ref, depth_ref, T_cur_ref_g2o);
+        t2 = chrono::steady_clock::now();
+        time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+        cout << "g2o optimization costs time: " << time_used.count() << " seconds." << endl;
+        while (cv::waitKey(0) != 'n');
     }
     return 0;
 }
@@ -381,131 +390,142 @@ void DirectPoseEstimationSingleLayerG2O(
     const vector<double> depth_ref,
     Sophus::SE3d &T21)
 {
-    // 构建图优化
-    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 1>> BlockSolverType;
-    typedef g2o::LinearSolverDense<BlockSolverType::PoseMatrixType> LinearSolverType;
+  // =========================
+  // g2o setup
+  // =========================
+  using BlockSolverType = g2o::BlockSolver<g2o::BlockSolverTraits<6, 9>>;
+  // using LinearSolverType = g2o::LinearSolverDense<BlockSolverType::PoseMatrixType>;
+  using LinearSolverType = g2o::LinearSolverEigen<BlockSolverType::PoseMatrixType>;
+  // using LinearSolverType = g2o::LinearSolverCholmod<BlockSolverType::PoseMatrixType>;
+  // auto solver = new g2o::OptimizationAlgorithmGaussNewton(
+  //     std::make_unique<BlockSolverType>(
+  //         std::make_unique<LinearSolverType>()));
 
-    auto solver = new g2o::OptimizationAlgorithmGaussNewton(
-        std::make_unique<BlockSolverType>(std::make_unique<LinearSolverType>()));
-    g2o::SparseOptimizer optimizer;
-    optimizer.setAlgorithm(solver);
-    // optimizer.setVerbose(true);
+  auto solver = new g2o::OptimizationAlgorithmLevenberg(
+      std::make_unique<BlockSolverType>(
+          std::make_unique<LinearSolverType>()));
 
-    // vertex
-    VertexPose *vertex_pose = new VertexPose();
-    vertex_pose->setId(0);
-    vertex_pose->setEstimate(T21);
-    optimizer.addVertex(vertex_pose);
+  g2o::SparseOptimizer optimizer;
+  optimizer.setAlgorithm(solver);
 
-    // K
-    Eigen::Matrix3d K_eigen;
-    K_eigen << fx, 0, cx, 0, fy, cy, 0, 0, 1;
+  // =========================
+  // vertex
+  // =========================
+  VertexPose *vertex = new VertexPose();
+  vertex->setId(0);
+  vertex->setEstimate(T21);
+  optimizer.addVertex(vertex);
 
-    // edges - 使用patch
-    int index = 1;
-    int valid_edges = 0;
-    for (size_t i = 0; i < px_ref.size(); ++i)
+  // =========================
+  // camera intrinsics
+  // =========================
+  Eigen::Matrix3d K_eigen;
+  K_eigen << fx, 0, cx,
+       0, fy, cy,
+       0, 0, 1;
+
+  int edge_id = 0;
+  int valid = 0;
+
+  // =========================
+  // edges
+  // =========================
+  for (size_t i = 0; i < px_ref.size(); i++)
+  {
+    if (depth_ref[i] <= 0) continue;
+
+    auto uv = px_ref[i];
+    double d = depth_ref[i];
+
+    if (uv[0] < 1 || uv[0] >= img1.cols-1 ||
+        uv[1] < 1 || uv[1] >= img1.rows-1)
+      continue;
+
+    EdgeDirectPoseOnly *edge =
+        new EdgeDirectPoseOnly(uv, K_eigen, d, img1, img2);
+
+    edge->setId(edge_id++);
+    edge->setVertex(0, vertex);
+
+    // ⭐ robust kernel
+    auto rk = new g2o::RobustKernelHuber;
+    rk->setDelta(5.0);
+    edge->setRobustKernel(rk);
+
+    // ⭐ 信息矩阵（标量）
+    edge->setInformation(Eigen::Matrix<double,9,9>::Identity());
+
+    optimizer.addEdge(edge);
+    valid++;
+  }
+
+  std::cout << "valid edges: " << valid << std::endl;
+
+  // =========================
+  // optimize
+  // =========================
+  optimizer.initializeOptimization();
+  optimizer.optimize(10);
+
+  T21 = vertex->estimate();
+
+  std::cout << "g2o result:\n"
+            << T21.matrix() << std::endl;
+
+  VecVector2d projections;
+  projections.reserve(px_ref.size());
+
+  for (size_t i = 0; i < px_ref.size(); ++i)
+  {
+    auto uv1 = px_ref[i];
+    auto d1 = depth_ref[i];
+
+    // 检查有效性
+    if (d1 <= 0)
     {
-        auto uv1 = px_ref[i];
-        auto d1 = depth_ref[i];
-
-        // 检查有效性
-        if (d1 <= 0)
-            continue;
-        if (uv1[0] < 1 || uv1[0] >= img1.cols - 1 || uv1[1] < 1 || uv1[1] >= img1.rows - 1)
-            continue;
-
-        // 创建边，传入img1和img2
-        EdgeDirectPoseOnly *edge = new EdgeDirectPoseOnly(uv1, K_eigen, d1, img1, img2);
-        edge->setId(index++);
-        edge->setVertex(0, vertex_pose);
-        // 不需要单独setMeasurement，因为在构造函数中已经提取了patch
-        edge->setInformation(Eigen::Matrix<double, 9, 9>::Identity()); // 9x9信息矩阵
-        auto rk = new g2o::RobustKernelHuber;
-        rk->setDelta(5.0);
-        edge->setRobustKernel(rk);
-        optimizer.addEdge(edge);
-        valid_edges++;
+      projections.push_back(Eigen::Vector2d(-1, -1));
+      continue;
     }
 
-    cout << "Added " << valid_edges << " edges with 3x3 patch" << endl;
+    // 计算3D点
+    Eigen::Vector3d p1 = d1 * K_eigen.inverse() * Eigen::Vector3d(uv1[0], uv1[1], 1);
+    // 变换到当前帧
+    Eigen::Vector3d p2 = T21 * p1;
+    // 投影到像素平面
+    Eigen::Vector3d uv2 = K_eigen * p2;
+    uv2 /= uv2[2];
 
-    if (valid_edges == 0)
+    projections.push_back(uv2.head<2>());
+  }
+
+  // 可视化
+  cv::Mat img2_show;
+  cv::cvtColor(img2, img2_show, cv::COLOR_GRAY2BGR);
+
+  int valid_count = 0;
+  for (size_t i = 0; i < px_ref.size(); ++i)
+  {
+    auto p_ref = px_ref[i];
+    auto p_cur = projections[i];
+
+    // 检查投影点是否在图像内
+    if (p_cur[0] > 0 && p_cur[0] < img2.cols &&
+        p_cur[1] > 0 && p_cur[1] < img2.rows)
     {
-        cout << "No valid edges, skipping optimization" << endl;
-        return;
+      // 绘制投影点（绿色圆点）
+      cv::circle(img2_show, cv::Point2f(p_cur[0], p_cur[1]), 2, cv::Scalar(0, 250, 0), 2);
+      // 绘制连线（从参考点到投影点）
+      cv::line(img2_show,
+               cv::Point2f(p_ref[0], p_ref[1]),
+               cv::Point2f(p_cur[0], p_cur[1]),
+               cv::Scalar(0, 250, 0), 1);
+      valid_count++;
     }
+  }
 
-    chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
-optimizer.initializeOptimization();
+  cout << "Visualized " << valid_count << " valid projections" << endl;
 
-optimizer.optimize(10);
-
-
-    chrono::steady_clock::time_point t2 = chrono::steady_clock::now();
-
-    chrono::duration<double> time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
-    cout << "g2o optimization costs time: " << time_used.count() << " seconds." << endl;
-    cout << "pose estimated by g2o =\n"
-         << vertex_pose->estimate().matrix() << endl;
-
-    T21 = vertex_pose->estimate();
-
-    VecVector2d projections;
-    projections.reserve(px_ref.size());
-    
-    for (size_t i = 0; i < px_ref.size(); ++i)
-    {
-        auto uv1 = px_ref[i];
-        auto d1 = depth_ref[i];
-        
-        // 检查有效性
-        if (d1 <= 0) {
-            projections.push_back(Eigen::Vector2d(-1, -1));
-            continue;
-        }
-        
-        // 计算3D点
-        Eigen::Vector3d p1 = d1 * K_eigen.inverse() * Eigen::Vector3d(uv1[0], uv1[1], 1);
-        // 变换到当前帧
-        Eigen::Vector3d p2 = T21 * p1;
-        // 投影到像素平面
-        Eigen::Vector3d uv2 = K_eigen * p2;
-        uv2 /= uv2[2];
-        
-        projections.push_back(uv2.head<2>());
-    }
-    
-    // 可视化
-    cv::Mat img2_show;
-    cv::cvtColor(img2, img2_show, cv::COLOR_GRAY2BGR);
-    
-    int valid_count = 0;
-    for (size_t i = 0; i < px_ref.size(); ++i)
-    {
-        auto p_ref = px_ref[i];
-        auto p_cur = projections[i];
-        
-        // 检查投影点是否在图像内
-        if (p_cur[0] > 0 && p_cur[0] < img2.cols && 
-            p_cur[1] > 0 && p_cur[1] < img2.rows)
-        {
-            // 绘制投影点（绿色圆点）
-            cv::circle(img2_show, cv::Point2f(p_cur[0], p_cur[1]), 2, cv::Scalar(0, 250, 0), 2);
-            // 绘制连线（从参考点到投影点）
-            cv::line(img2_show, 
-                     cv::Point2f(p_ref[0], p_ref[1]), 
-                     cv::Point2f(p_cur[0], p_cur[1]),
-                     cv::Scalar(0, 250, 0), 1);
-            valid_count++;
-        }
-    }
-    
-    cout << "Visualized " << valid_count << " valid projections" << endl;
-
-    
-    cv::imshow("g2o projection", img2_show);
-    cv::waitKey(0); 
+  cv::imshow("g2o projection", img2_show);
 }
 
 void DirectPoseEstimationSingleLayer(

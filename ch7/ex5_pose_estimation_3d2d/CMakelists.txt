@@ -4,10 +4,24 @@ project( pose_estimation_3d2d )
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(MSVC OR (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+    # 对于 MinGW/GCC，添加更好的调试符号和内联优化
+    # add_compile_options(-O2 -g -finline-functions -fno-inline-small-functions)
+    add_compile_options(-O2)
+    # 如果仍有问题，尝试降低优化级别
+    # add_compile_options(-O1)
+endif()
+
+# 确保 Eigen 使用正确的对齐
+#add_definitions(-DEIGEN_MAX_ALIGN_BYTES=64)
+#add_definitions(-DEIGEN_DONT_ALIGN_STATICALLY)
 
 
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
+
+
+
 
 find_package(Eigen3 REQUIRED)
 find_package(Sophus REQUIRED)
@@ -16,4 +30,4 @@ find_package(G2O REQUIRED)
 include_directories(${G2O_INCLUDE_DIRS})
 
 add_executable( pose_estimation_3d2d pose_estimation_3d2d.cpp )
-target_link_libraries(pose_estimation_3d2d ${OpenCV_LIBS} Eigen3::Eigen Sophus::Sophus g2o::core g2o::stuff)
+target_link_libraries(pose_estimation_3d2d ${OpenCV_LIBS} Sophus::Sophus g2o::core g2o::stuff)

@@ -6,7 +6,7 @@
 
 ## 核心依赖
 
-- **Eigen**：5.0.1  
+- **Eigen**：3.4.0  
 - **Ceres Solver**：2.3.0  
 - **Sophus**：1.24.6  
 - **g2o**：1.0.0  
@@ -18,25 +18,27 @@
 - **Eigen**  
   用于矩阵运算与线性代数计算，是整个优化与几何计算的基础库。
 
+  由于我们用的MINGW, 记得加上
+  
+  ```cmake
+  if(MSVC OR (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+    # 对于 MinGW/GCC，添加更好的调试符号和内联优化
+    # add_compile_options(-O2 -g -finline-functions -fno-inline-small-functions)
+    add_compile_options(-O2)
+    # 如果仍有问题，尝试降低优化级别
+    # add_compile_options(-O1)
+  endif()
+  ```
+
 - **Ceres Solver**  
   用于非线性优化（如 PnP、BA、ICP 等问题）。
+  make的时候关掉CUDA
+  ```cmake
+  cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=D:/Software/msys64/ucrt64 -DBUILD_TESTING=OFF -DUSE_CUDA=OFF
+  ```
 
 - **Sophus**  
   用于李群表示（SE(3)、SO(3)），便于位姿更新与指数映射。
-
-  ⚠️ 编译注意事项：  
-  在编译 Sophus 时，建议去掉 Eigen 的版本限制，以避免版本冲突。
-
-  在 `CMakeLists.txt` 中：
-
-  ```cmake
-  find_package(Eigen3 3.4.0 REQUIRED)
-  ```
-  修改为
-
-  ```cmake
-  find_package(Eigen3 REQUIRED)
-  ```
 
 
 - **g2o**  

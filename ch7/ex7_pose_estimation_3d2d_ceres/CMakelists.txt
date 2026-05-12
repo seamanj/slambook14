@@ -1,17 +1,31 @@
 cmake_minimum_required(VERSION 3.10)
 project( pose_estimation_3d2d_ceres )
 
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
+message(STATUS "CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}")
+message(STATUS "CMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}")
 
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
-find_package(Eigen3 REQUIRED)
-find_package(Sophus REQUIRED)
 
+if(MSVC OR (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+    # 对于 MinGW/GCC，添加更好的调试符号和内联优化
+    # add_compile_options(-O2 -g -finline-functions -fno-inline-small-functions)
+    add_compile_options(-O2)
+    # 如果仍有问题，尝试降低优化级别
+    # add_compile_options(-O1)
+endif()
+
+find_package(Eigen3 REQUIRED)
+message(STATUS "EIGEN3_VERSION_STRING: ${EIGEN3_VERSION_STRING}")
+
+find_package(Sophus REQUIRED)
+message(STATUS "Sophus_DIR = ${Sophus_DIR}")
 find_package(Ceres REQUIRED)
 include_directories(${CERES_INCLUDE_DIRS})
 
@@ -20,4 +34,8 @@ include_directories(${G2O_INCLUDE_DIRS})
 
 
 add_executable( pose_estimation_3d2d_ceres pose_estimation_3d2d_ceres.cpp )
-target_link_libraries(pose_estimation_3d2d_ceres ${OpenCV_LIBS} Eigen3::Eigen Sophus::Sophus ${CERES_LIBRARIES} g2o::core g2o::stuff)
+target_link_libraries(pose_estimation_3d2d_ceres ${OpenCV_LIBS} Eigen3::Eigen Sophus::Sophus Ceres::ceres g2o::core g2o::stuff)
+
+message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+message(STATUS "Eigen include dir: ${EIGEN3_INCLUDE_DIR}")
+message(STATUS "Ceres version: ${CERES_VERSION}")
