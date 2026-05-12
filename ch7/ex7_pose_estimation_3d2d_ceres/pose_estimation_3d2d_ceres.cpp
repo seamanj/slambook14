@@ -338,9 +338,9 @@ public:
         0, -fy / Z, fy * Y / (Z * Z), fy + fy * Y * Y / Z2, -fy * X * Y / Z2, -fy * X / Z;
   }
 
-  virtual bool read(istream &in) override {}
+  virtual bool read(istream &in) override {return true;}
 
-  virtual bool write(ostream &out) const override {}
+  virtual bool write(ostream &out) const override {return true;}
 
 private:
   Eigen::Vector3d _pos3d;
@@ -402,71 +402,145 @@ void bundleAdjustmentG2O(
        << vertex_pose->estimate().matrix() << endl;
   pose = vertex_pose->estimate();
 }
-
-struct PnPError
+class SE3Manifold : public ceres::Manifold
 {
-  PnPError(
-      const Eigen::Vector3d &point_3d,
-      const Eigen::Vector2d &observation,
-      const Eigen::Matrix3d &K)
-      : point_3d_(point_3d),
-        observation_(observation),
-        K_(K)
+public:
+  // dimension
+  int AmbientSize() const override { return 6; }
+  int TangentSize() const override { return 6; }
+
+  // x_plus_delta = exp(delta) * x
+  bool Plus(const double *x,
+            const double *delta,
+            double *x_plus_delta) const override
   {
-  }
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> xi(x);
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> dx(delta);
 
-  template <typename T>
-  bool operator()(const T *const camera,
-                  T *residuals) const
-  {
-    // camera:
-    // [0,1,2] angle-axis rotation
-    // [3,4,5] translation
+    Sophus::SE3d T = Sophus::SE3d::exp(xi);
+    Sophus::SE3d dT = Sophus::SE3d::exp(dx);
 
-    T p[3];
+    Sophus::SE3d T_new = dT * T;
 
-    T point[3] = {
-        T(point_3d_(0)),
-        T(point_3d_(1)),
-        T(point_3d_(2))};
-
-    // 旋转
-    ceres::AngleAxisRotatePoint(
-        camera,
-        point,
-        p);
-
-    // 平移
-    p[0] += camera[3];
-    p[1] += camera[4];
-    p[2] += camera[5];
-
-    // 归一化平面
-    T x = p[0] / p[2];
-    T y = p[1] / p[2];
-
-    // 投影
-    T u =
-        T(K_(0, 0)) * x +
-        T(K_(0, 2));
-
-    T v =
-        T(K_(1, 1)) * y +
-        T(K_(1, 2));
-
-    // residual
-    residuals[0] =
-        T(observation_(0)) - u;
-
-    residuals[1] =
-        T(observation_(1)) - v;
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> xi_new(x_plus_delta);
+    xi_new = T_new.log();
 
     return true;
   }
 
-  const Eigen::Vector3d point_3d_;
-  const Eigen::Vector2d observation_;
-  const Eigen::Matrix3d K_;
+  // inverse: y - x
+  bool Minus(const double *y,
+             const double *x,
+             double *y_minus_x) const override
+  {
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> xi1(y);
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> xi2(x);
+
+    Sophus::SE3d T1 = Sophus::SE3d::exp(xi1);
+    Sophus::SE3d T2 = Sophus::SE3d::exp(xi2);
+
+    Sophus::SE3d dT = T2.inverse() * T1;
+
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> dx(y_minus_x);
+    dx = dT.log();
+
+    return true;
+  }
+
+  bool PlusJacobian(const double *x,
+                    double *jacobian) const override
+  {
+    Eigen::Map<Eigen::Matrix<double, 6, 6, Eigen::RowMajor>> J(jacobian);
+    J.setIdentity();
+    return true;
+  }
+
+  bool MinusJacobian(const double *x,
+                     double *jacobian) const override
+  {
+    Eigen::Map<Eigen::Matrix<double, 6, 6, Eigen::RowMajor>> J(jacobian);
+    J.setIdentity();
+    return true;
+  }
+};
+struct PnPError
+{
+    PnPError(
+        const Eigen::Vector3d& point_3d,
+        const Eigen::Vector2d& observation,
+        const Eigen::Matrix3d& K)
+        : point_3d_(point_3d),
+          observation_(observation),
+          K_(K)
+    {
+    }
+
+    template<typename T>
+    bool operator()(const T* const camera,
+                    T* residuals) const
+    {
+        // ============================================
+        // camera = se3 logarithm
+        //
+        // [0 1 2] : translation 
+        // [3 4 5] : rotation 
+        // ============================================
+
+        Eigen::Matrix<T,6,1> xi;
+
+        for(int i=0;i<6;i++)
+            xi[i] = camera[i];
+
+        // ============================================
+        // Sophus SE3
+        // ============================================
+
+        Sophus::SE3<T> Tcw =
+            Sophus::SE3<T>::exp(xi);
+
+        // ============================================
+        // transform point
+        // ============================================
+
+        Eigen::Matrix<T,3,1> P(
+            T(point_3d_(0)),
+            T(point_3d_(1)),
+            T(point_3d_(2)));
+
+        Eigen::Matrix<T,3,1> Pc =
+            Tcw * P;
+
+        // ============================================
+        // projection
+        // ============================================
+
+        T x = Pc[0] / Pc[2];
+        T y = Pc[1] / Pc[2];
+
+        T u =
+            T(K_(0,0)) * x +
+            T(K_(0,2));
+
+        T v =
+            T(K_(1,1)) * y +
+            T(K_(1,2));
+
+        // ============================================
+        // reprojection error
+        // ============================================
+
+        residuals[0] =
+            T(observation_(0)) - u;
+
+        residuals[1] =
+            T(observation_(1)) - v;
+
+        return true;
+    }
+
+    const Eigen::Vector3d point_3d_;
+    const Eigen::Vector2d observation_;
+    const Eigen::Matrix3d K_;
 };
 
 void bundleAdjustmentCeres(
@@ -475,138 +549,52 @@ void bundleAdjustmentCeres(
     const cv::Mat &K,
     Sophus::SE3d &pose)
 {
-  // ----------------------------
-  // 相机内参
-  // ----------------------------
-  Eigen::Matrix3d K_eigen;
+    Eigen::Matrix3d K_eigen;
+    K_eigen << K.at<double>(0, 0), K.at<double>(0, 1), K.at<double>(0, 2),
+               K.at<double>(1, 0), K.at<double>(1, 1), K.at<double>(1, 2),
+               K.at<double>(2, 0), K.at<double>(2, 1), K.at<double>(2, 2);
 
-  K_eigen << K.at<double>(0, 0),
-      K.at<double>(0, 1),
-      K.at<double>(0, 2),
+    // =========================
+    // SE3 parameter (log form)
+    // =========================
+    double camera[6];
 
-      K.at<double>(1, 0),
-      K.at<double>(1, 1),
-      K.at<double>(1, 2),
+    Eigen::Matrix<double, 6, 1> xi = pose.log();
+    for (int i = 0; i < 6; i++)
+        camera[i] = xi[i];
 
-      K.at<double>(2, 0),
-      K.at<double>(2, 1),
-      K.at<double>(2, 2);
+    ceres::Problem problem;
 
-  // ----------------------------
-  // 使用 pose 作为初始值
-  // camera:
-  // [0,1,2] angle-axis
-  // [3,4,5] translation
-  // ----------------------------
+    // =========================
+    // IMPORTANT: SE3 manifold
+    // =========================
+    problem.AddParameterBlock(camera, 6, new SE3Manifold());
 
-  double camera[6];
+    for (size_t i = 0; i < points_3d.size(); ++i)
+    {
+        ceres::CostFunction *cost_function =
+            new ceres::AutoDiffCostFunction<PnPError, 2, 6>(
+                new PnPError(points_3d[i], points_2d[i], K_eigen));
 
-  // Sophus -> angle axis
-  Eigen::AngleAxisd angle_axis(
-      pose.rotationMatrix());
+        problem.AddResidualBlock(cost_function, nullptr, camera);
+    }
 
-  Eigen::Vector3d angle_axis_vec =
-      angle_axis.axis() * angle_axis.angle();
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_QR;
+    options.minimizer_progress_to_stdout = true;
+    options.max_num_iterations = 100;
 
-  camera[0] = angle_axis_vec[0];
-  camera[1] = angle_axis_vec[1];
-  camera[2] = angle_axis_vec[2];
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
 
-  camera[3] = pose.translation()[0];
-  camera[4] = pose.translation()[1];
-  camera[5] = pose.translation()[2];
+    std::cout << summary.BriefReport() << std::endl;
 
-  // ----------------------------
-  // 构建 problem
-  // ----------------------------
+    // =========================
+    // back to SE3
+    // =========================
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> xi_est(camera);
+    pose = Sophus::SE3d::exp(xi_est);
 
-  ceres::Problem problem;
-
-  for (size_t i = 0; i < points_3d.size(); ++i)
-  {
-    ceres::CostFunction *cost_function =
-        new ceres::AutoDiffCostFunction<
-            PnPError,
-            2,
-            6>(
-            new PnPError(
-                points_3d[i],
-                points_2d[i],
-                K_eigen));
-
-    problem.AddResidualBlock(
-        cost_function,
-        nullptr,
-        camera);
-  }
-
-  // ----------------------------
-  // solver options
-  // ----------------------------
-
-  ceres::Solver::Options options;
-
-  options.linear_solver_type =
-      ceres::DENSE_QR;
-
-  options.minimizer_progress_to_stdout =
-      true;
-
-  options.max_num_iterations = 100;
-
-  options.function_tolerance = 1e-6;
-
-  options.gradient_tolerance = 1e-10;
-
-  // ----------------------------
-  // solve
-  // ----------------------------
-
-  ceres::Solver::Summary summary;
-
-  ceres::Solve(
-      options,
-      &problem,
-      &summary);
-
-  std::cout << summary.BriefReport()
-            << std::endl;
-
-  // ----------------------------
-  // angle-axis -> rotation matrix
-  // ----------------------------
-
-  Eigen::Vector3d rvec(
-      camera[0],
-      camera[1],
-      camera[2]);
-
-  double theta = rvec.norm();
-
-  Eigen::Matrix3d R =
-      Eigen::Matrix3d::Identity();
-
-  if (theta > 1e-12)
-  {
-    Eigen::Vector3d axis =
-        rvec / theta;
-
-    R =
-        Eigen::AngleAxisd(
-            theta,
-            axis)
-            .toRotationMatrix();
-  }
-
-  Eigen::Vector3d t(
-      camera[3],
-      camera[4],
-      camera[5]);
-
-  // 返回优化后的 pose
-  pose = Sophus::SE3d(R, t);
-
-  std::cout << "pose from ceres:\n"
-            << pose.matrix()
-            << std::endl;
+    std::cout << "pose from ceres:\n"
+              << pose.matrix() << std::endl;
 }

@@ -64,9 +64,9 @@ public:
     _estimate = Sophus::SE3d::exp(update_eigen) * _estimate;
   }
 
-  virtual bool read(istream &in) override {}
+  virtual bool read(istream &in) override {return true;}
 
-  virtual bool write(ostream &out) const override {}
+  virtual bool write(ostream &out) const override {return true;}
 };
 
 /// g2o edge
@@ -92,9 +92,9 @@ public:
     _jacobianOplusXi.block<3, 3>(0, 3) = Sophus::SO3d::hat(xyz_trans);
   }
 
-  bool read(istream &in) {}
+  bool read(istream &in) {return true;}
 
-  bool write(ostream &out) const {}
+  bool write(ostream &out) const {return true;}
 
 protected:
   Eigen::Vector3d _point;
@@ -342,6 +342,69 @@ void bundleAdjustment(
   t = (Mat_<double>(3, 1) << t_(0, 0), t_(1, 0), t_(2, 0));
 }
 
+
+class SE3Manifold : public ceres::Manifold
+{
+public:
+  // dimension
+  int AmbientSize() const override { return 6; }
+  int TangentSize() const override { return 6; }
+
+  // x_plus_delta = exp(delta) * x
+  bool Plus(const double *x,
+            const double *delta,
+            double *x_plus_delta) const override
+  {
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> xi(x);
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> dx(delta);
+
+    Sophus::SE3d T = Sophus::SE3d::exp(xi);
+    Sophus::SE3d dT = Sophus::SE3d::exp(dx);
+
+    Sophus::SE3d T_new = dT * T;
+
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> xi_new(x_plus_delta);
+    xi_new = T_new.log();
+
+    return true;
+  }
+
+  // inverse: y - x
+  bool Minus(const double *y,
+             const double *x,
+             double *y_minus_x) const override
+  {
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> xi1(y);
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> xi2(x);
+
+    Sophus::SE3d T1 = Sophus::SE3d::exp(xi1);
+    Sophus::SE3d T2 = Sophus::SE3d::exp(xi2);
+
+    Sophus::SE3d dT = T2.inverse() * T1;
+
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> dx(y_minus_x);
+    dx = dT.log();
+
+    return true;
+  }
+
+  bool PlusJacobian(const double *x,
+                    double *jacobian) const override
+  {
+    Eigen::Map<Eigen::Matrix<double, 6, 6, Eigen::RowMajor>> J(jacobian);
+    J.setIdentity();
+    return true;
+  }
+
+  bool MinusJacobian(const double *x,
+                     double *jacobian) const override
+  {
+    Eigen::Map<Eigen::Matrix<double, 6, 6, Eigen::RowMajor>> J(jacobian);
+    J.setIdentity();
+    return true;
+  }
+};
+
 struct ICPError
 {
   ICPError(
@@ -353,40 +416,40 @@ struct ICPError
   }
 
   template <typename T>
-  bool operator()(const T *const camera,
+  bool operator()(const T *const se3,
                   T *residuals) const
   {
-    // camera:
-    // [0,1,2] angle-axis rotation
-    // [3,4,5] translation
+    // se3:
+    //
+    // [0 1 2] upsilon translation  
+    // [3 4 5] omega rotation
 
-    T p[3];
+    Eigen::Matrix<T, 6, 1> xi;
 
-    T point[3] = {
+    for (int i = 0; i < 6; ++i)
+    {
+      xi[i] = se3[i];
+    }
+
+    Sophus::SE3<T> Tcw =
+        Sophus::SE3<T>::exp(xi);
+
+    Eigen::Matrix<T, 3, 1> p2(
         T(pts2_(0)),
         T(pts2_(1)),
-        T(pts2_(2))};
+        T(pts2_(2)));
 
-    // 旋转
-    ceres::AngleAxisRotatePoint(
-        camera,
-        point,
-        p);
+    Eigen::Matrix<T, 3, 1> p1_est =
+        Tcw * p2;
 
-    // 平移
-    p[0] += camera[3];
-    p[1] += camera[4];
-    p[2] += camera[5];
-
-    // residual
     residuals[0] =
-        T(pts1_(0)) - p[0];
+        T(pts1_(0)) - p1_est[0];
 
     residuals[1] =
-        T(pts1_(1)) - p[1];
+        T(pts1_(1)) - p1_est[1];
 
     residuals[2] =
-        T(pts1_(2)) - p[2];
+        T(pts1_(2)) - p1_est[2];
 
     return true;
   }
@@ -395,18 +458,19 @@ struct ICPError
   const Eigen::Vector3d pts2_;
 };
 
-void bundleAdjustmentCeres(const vector<Point3f> &pts1,
-                           const vector<Point3f> &pts2,
-                           Mat &R, Mat &t)
+void bundleAdjustmentCeres(
+    const vector<Point3f> &pts1,
+    const vector<Point3f> &pts2,
+    Mat &R,
+    Mat &t)
 {
+  // se3 logarithm
+  //
+  // [0 1 2] omega
+  // [3 4 5] upsilon
 
-  // camera:
-  // [0,1,2] angle-axis
-  // [3,4,5] translation
+  double se3[6] = {0, 0, 0, 0, 0, 0};
 
-  double camera[6] = {0, 0, 0, 0, 0, 0};
-
-  // 构建 problem
   ceres::Problem problem;
 
   for (size_t i = 0; i < pts1.size(); i++)
@@ -417,37 +481,69 @@ void bundleAdjustmentCeres(const vector<Point3f> &pts1,
             3,
             6>(
             new ICPError(
-                Eigen::Vector3d(pts1[i].x, pts1[i].y, pts1[i].z),
-                Eigen::Vector3d(pts2[i].x, pts2[i].y, pts2[i].z)));
-    problem.AddResidualBlock(cost_function, nullptr, camera);
+                Eigen::Vector3d(
+                    pts1[i].x,
+                    pts1[i].y,
+                    pts1[i].z),
+                Eigen::Vector3d(
+                    pts2[i].x,
+                    pts2[i].y,
+                    pts2[i].z)));
+
+    problem.AddResidualBlock(
+        cost_function,
+        nullptr,
+        se3);
   }
 
- 
+  // 使用 Sophus manifold
+  problem.SetManifold(
+      se3,
+      new SE3Manifold());
+
   ceres::Solver::Options options;
-  options.linear_solver_type = ceres::DENSE_QR;
-  options.minimizer_progress_to_stdout = true;
+
+  options.linear_solver_type =
+      ceres::DENSE_QR;
+
+  options.minimizer_progress_to_stdout =
+      true;
+
+  options.max_num_iterations = 20;
+
   ceres::Solver::Summary summary;
-  ceres::Solve(options, &problem, &summary);
+
+  ceres::Solve(
+      options,
+      &problem,
+      &summary);
+
   cout << summary.BriefReport() << endl;
 
-  // ----------------------------
-  // angle-axis -> rotation matrix
-  // ----------------------------
+  // se3 -> SE3
+  Eigen::Matrix<double, 6, 1> xi;
 
-  double R_ceres[9];
+  for (int i = 0; i < 6; ++i)
+  {
+    xi[i] = se3[i];
+  }
 
-  ceres::AngleAxisToRotationMatrix(
-      camera,
-      R_ceres); // tj : R_ceres is in column-major order
+  Sophus::SE3d T =
+      Sophus::SE3d::exp(xi);
 
-  R = (Mat_<double>(3, 3) << R_ceres[0], R_ceres[3], R_ceres[6],
-       R_ceres[1], R_ceres[4], R_ceres[7],
-       R_ceres[2], R_ceres[5], R_ceres[8]);
+  Eigen::Matrix3d R_ =
+      T.rotationMatrix();
 
-  // ----------------------------
-  // translation
-  // ----------------------------
-  t = (Mat_<double>(3, 1) << camera[3],
-       camera[4],
-       camera[5]);
+  Eigen::Vector3d t_ =
+      T.translation();
+
+  R = (Mat_<double>(3, 3)
+           << R_(0, 0), R_(0, 1), R_(0, 2),
+       R_(1, 0), R_(1, 1), R_(1, 2),
+       R_(2, 0), R_(2, 1), R_(2, 2));
+
+  t = (Mat_<double>(3, 1)
+           << t_[0],
+       t_[1],
+       t_[2]);
 }
