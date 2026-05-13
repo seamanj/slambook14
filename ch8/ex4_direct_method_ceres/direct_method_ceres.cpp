@@ -366,7 +366,7 @@ T∈SE(3)
 
 更新：
 
-T←exp(δξ∧)T
+T←exp(δξ^)T
 
 特点：
 
@@ -503,7 +503,7 @@ public:
       double **jacobians) const override
   {
     // ---------------------------
-    // SE3 (Lie algebra)
+    // SE3 (Lie algebra)  translation + rotation
     // ---------------------------
     Eigen::Map<const Eigen::Matrix<double, 6, 1>> xi(parameters[0]);
     Sophus::SE3d T = Sophus::SE3d::exp(xi);

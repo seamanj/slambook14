@@ -7,7 +7,7 @@
 ## 核心依赖
 
 - **Eigen**：3.4.0  
-- **Ceres Solver**：2.3.0  
+- **Ceres Solver**：2.2.0  
 - **Sophus**：1.24.6  
 - **g2o**：1.0.0  
 
