@@ -43,6 +43,10 @@ struct PoseAndIntrinsics {
 };
 
 /// 位姿加相机内参的顶点，9维，前三维为so3，接下去为t, f, k1, k2
+
+/*
+g2o 的 BaseVertex<D, T> 中，T 就是估计值类型。通常 T 会是一个结构体/类，而不是原始数组，这样更符合面向对象设计，让每个顶点自己负责自己的参数管理和计算。
+ */
 class VertexPoseAndIntrinsics : public g2o::BaseVertex<9, PoseAndIntrinsics> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
