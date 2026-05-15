@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(bundle_adjustment)
+project(bundle_adjustment_ceres)
 set(CMAKE_BUILD_TYPE "Release")
 set(CMAKE_CXX_FLAGS "-O3 -std=c++11")
 
@@ -13,12 +13,9 @@ LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 Find_Package(Eigen3 REQUIRED)
 Find_Package(Ceres REQUIRED)
-Find_Package(Sophus REQUIRED)
 
 
-SET(G2O_LIBS g2o_csparse_extension g2o_stuff g2o_core cxsparse)
-
-include_directories(${PROJECT_SOURCE_DIR} ${EIGEN3_INCLUDE_DIR} )
+include_directories(${EIGEN3_INCLUDE_DIR} )
 
 
 add_library(bal_common common.cpp)

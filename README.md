@@ -44,6 +44,17 @@
 - **g2o**  
   用于图优化（Graph Optimization），主要用于 BA 等结构化优化问题。
 
+  为了应用g2o::LinearSolverCSparse, 我们需要在G2O里面支持CSPARSE. 具体用法见ch9_ex2
+
+1. 先安装suitesparse这个库
+```
+pacman -S mingw-w64-ucrt-x86_64-suitesparse
+```
+2. 再编译G2O
+```cmake
+ cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=OFF -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
+
+```
 ---
 
 ## 兼容性说明

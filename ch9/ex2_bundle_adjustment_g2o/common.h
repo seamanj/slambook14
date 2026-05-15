@@ -49,8 +49,6 @@ public:
 
     const double *points() const { return parameters_ + camera_block_size() * num_cameras_; }
 
-    // tj : parameters_ layout: [camera0, camera1, ..., cameraN-1, point0, point1, ..., pointM-1]
-
     /// camera参数的起始地址
     double *mutable_cameras() { return parameters_; }
 
