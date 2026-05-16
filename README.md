@@ -50,11 +50,109 @@
 ```
 pacman -S mingw-w64-ucrt-x86_64-suitesparse
 ```
-2. 再编译G2O
+2. 再编译G2O带上`-DG2O_USE_CSPARSE=ON`
 ```cmake
- cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=OFF -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
+ cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=ON -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
 
 ```
+
+3. 如果需要g2o_viewer, 我们需要先编译这个libQGLViewer这个库
+```
+git clone https://github.com/GillesDebunne/libQGLViewer.git
+cd libQGLViewer
+# 1. 先编译核心库 QGLViewer
+cd /d/Software/libQGLViewer/QGLViewer
+
+# 2. 清理之前的编译残留（如果有）
+make clean
+
+# 3. 生成 Makefile 并编译核心库
+qmake PREFIX=/ucrt64
+make -j32
+
+# 4. 手动安装
+# QGLViewer没有make install, 需要自己手动复制
+# 查看当前目录下生成的库文件
+ls -la *.dll *.a 2>/dev/null
+
+# 查看是否已经安装到 /ucrt64 目录
+ls -la /ucrt64/lib/libQGLViewer* 2>/dev/null
+ls -la /ucrt64/bin/libQGLViewer* 2>/dev/null
+
+# 如果库文件只存在于当前目录而没有安装到系统目录，需要手动复制：
+# 手动复制库文件到系统目录
+cp -v libQGLViewer3.dll /ucrt64/bin/
+cp -v libQGLViewer3.a /ucrt64/lib/
+cp -v libQGLViewerd3.dll /ucrt64/bin/
+cp -v libQGLViewerd3.a /ucrt64/lib/
+
+# 复制头文件
+cp -rv ../QGLViewer /ucrt64/include/
+
+# 确认文件已复制成功
+ls -la /ucrt64/bin/libQGLViewer*.dll
+ls -la /ucrt64/lib/libQGLViewer*.a
+ls -la /ucrt64/include/QGLViewer/
+```
+
+然后我们可以编译一下它自带的simpleViewer, 如果发现它用的QGLViewer2, 手动改为QGLViewer3
+
+```
+cd /d/Software/libQGLViewer/examples
+cp simpleViewer.pro simpleViewer.pro.bak
+
+sed -i 's/QGLViewer2/QGLViewer3/g' examples.pri
+
+# 返回重新编译
+cd simpleViewer
+make clean
+qmake
+make -j32
+# 生成D:\Software\libQGLViewer\examples\simpleViewer\release\simpleViewer.exe
+```
+界面长这样:
+![simpleViewer](./resource/simpleViewer.png)
+
+4. 再编译G2O, `-DG2O_BUILD_APPS=ON`
+```cmake
+cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=ON -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DQGLVIEWER_INCLUDE_DIR=/ucrt64/include -DQGLVIEWER_LIBRARY=/ucrt64/lib/libQGLViewer3.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
+```
+
+打开g2o_viewer, 让我们加载第10章的位姿图文件, 界面长这样:
+![g2o_viewer](./resource/g2o_viewer.png)
+
+
+如果cmake找不到QGLViewer, 我们尝试下自己写个cmake配置
+```
+# 1. 创建 QGLViewer 的 CMake 配置文件目录
+mkdir -p /ucrt64/lib/cmake/QGLViewer
+
+# 2. 创建配置文件
+cat > /ucrt64/lib/cmake/QGLViewer/QGLViewerConfig.cmake << 'EOF'
+# QGLViewer configuration for Windows/MSYS2 UCRT64
+set(QGLVIEWER_FOUND TRUE)
+set(QGLVIEWER_INCLUDE_DIRS /ucrt64/include)
+set(QGLVIEWER_LIBRARIES /ucrt64/lib/libQGLViewer3.a)
+set(QGLVIEWER_LIBRARY ${QGLVIEWER_LIBRARIES})
+set(QGLVIEWER_INCLUDE_DIR ${QGLVIEWER_INCLUDE_DIRS})
+
+# Create imported target
+add_library(QGLViewer::QGLViewer UNKNOWN IMPORTED)
+set_target_properties(QGLViewer::QGLViewer PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${QGLVIEWER_INCLUDE_DIRS}"
+    IMPORTED_LOCATION "${QGLVIEWER_LIBRARIES}"
+)
+
+# Also create non-namespaced target for compatibility
+add_library(QGLViewer UNKNOWN IMPORTED)
+set_target_properties(QGLViewer PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${QGLVIEWER_INCLUDE_DIRS}"
+    IMPORTED_LOCATION "${QGLVIEWER_LIBRARIES}"
+)
+EOF
+```
+
+
 ---
 
 ## 兼容性说明
