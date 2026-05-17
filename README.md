@@ -10,7 +10,7 @@
 - **Ceres Solver**：2.2.0  
 - **Sophus**：1.24.6  
 - **g2o**：1.0.0  
-
+- **gtsam**：4.3.0  
 ---
 
 ## 说明
@@ -150,6 +150,92 @@ set_target_properties(QGLViewer PROPERTIES
     IMPORTED_LOCATION "${QGLVIEWER_LIBRARIES}"
 )
 EOF
+```
+
+
+
+- **gstam**  
+用于基于因子图的概率建模与非线性优化，支持 SLAM、三维重建与位姿图优化等问题的增量式求解。
+
+gstam对MinGW支持比较差, 在Windows上默认支持MSVC, 所以我们需要手动改下:
+
+1. 打开`gstam\gstam\CMakeLists.txt`
+将
+```
+set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "/w")
+```
+改成
+```
+if(WIN32)
+  if(MSVC)
+    set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "/w")
+  else()
+    set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "-w")
+  endif()
+else()
+```
+
+注释掉    `#constrained`
+
+2. 打开`gstam\cmake\GtsamBuildTypes.cmake`
+注释掉
+`#-Werror                                        # Enable warnings as errors`
+3. 打开 `gtsam\gtsam\3rdparty\cephes\CMakeLists.txt`
+类似修改WIN32部分
+```
+if(WIN32)
+  if(MSVC)
+    set_target_properties(cephes-gtsam PROPERTIES COMPILE_FLAGS /w)
+  else()
+    set_target_properties(cephes-gtsam PROPERTIES COMPILE_FLAGS -w)
+  endif()
+endif()
+```
+4. 打开`gtsam\cmake\dllexport.h.in`
+将WIN32部分改成
+```
+#ifdef _WIN32
+#  ifndef GTSAM_SHARED_LIB
+#    define @library_name@_EXPORT
+#    define @library_name@_EXTERN_EXPORT extern
+#  else
+#    ifdef @library_name@_EXPORTS
+#      ifdef GTSAM_MINGW
+         // MinGW 使用 GCC 可见性属性，而不是 __declspec
+#        define @library_name@_EXPORT __attribute__((visibility("default")))
+#        define @library_name@_EXTERN_EXPORT __attribute__((visibility("default"))) extern
+#      else
+         // MSVC 使用 __declspec
+#        define @library_name@_EXPORT __declspec(dllexport)
+#        define @library_name@_EXTERN_EXPORT __declspec(dllexport) extern
+#      endif
+#    else
+#      ifdef GTSAM_MINGW
+         // MinGW 导入时不需要特殊标记
+#        define @library_name@_EXPORT
+#        define @library_name@_EXTERN_EXPORT extern
+#      else
+#        define @library_name@_EXPORT __declspec(dllimport)
+#        define @library_name@_EXTERN_EXPORT __declspec(dllimport)
+#      endif
+#    endif
+#  endif
+#else
+```
+5. 最后编译 
+
+```
+cmake .. \
+  -G "MinGW Makefiles" \
+  -DCMAKE_INSTALL_PREFIX=/ucrt64 \
+  -DGTSAM_BUILD_TESTS=OFF \
+  -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+  -DGTSAM_SUPPORT_NESTED_DISSECTION=OFF \
+  -DGTSAM_WITH_TBB=OFF \
+  -DGTSAM_USE_SYSTEM_EIGEN=ON \
+  -DGTSAM_BUILD_UNSTABLE=OFF \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DCMAKE_CXX_FLAGS="-D_USE_MATH_DEFINES -fpermissive"
 ```
 
 
