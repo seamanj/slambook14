@@ -215,7 +215,87 @@ void saveToG2O(const std::string& filename,
     fout.close();
     std::cout << "Saved to " << filename << std::endl;
 }
-
+// ==================== 保存优化结果（包含更新后的 edges） ====================
+void saveToG2OWithUpdatedEdges(const std::string& filename,
+                               const std::map<int, SE3d>& optimized_poses,
+                               const std::vector<std::tuple<int, int, SE3d, Matrix6d>>& original_edges) {
+    
+    std::ofstream fout(filename);
+    if (!fout.is_open()) {
+        std::cerr << "Failed to open file: " << filename << std::endl;
+        return;
+    }
+    
+    std::cout << "Saving optimization results with UPDATED edges to " << filename << " ..." << std::endl;
+    
+    // 保存优化后的顶点
+    for (const auto& pose : optimized_poses) {
+        int id = pose.first;
+        SE3d T = pose.second;
+        
+        Vector3d t = T.translation();
+        Quaterniond q = T.unit_quaternion();
+        
+        fout << "VERTEX_SE3:QUAT " << id << " "
+             << t.x() << " " << t.y() << " " << t.z() << " "
+             << q.x() << " " << q.y() << " " << q.z() << " " << q.w()
+             << std::endl;
+    }
+    
+    // 保存更新后的边（基于优化后的位姿重新计算相对位姿）
+    int edge_count = 0;
+    for (const auto& edge : original_edges) {
+        int id1 = std::get<0>(edge);
+        int id2 = std::get<1>(edge);
+        Matrix6d info = std::get<3>(edge);  // 信息矩阵保持不变
+        
+        // 检查两个顶点是否都存在
+        if (optimized_poses.find(id1) == optimized_poses.end() ||
+            optimized_poses.find(id2) == optimized_poses.end()) {
+            std::cerr << "Warning: vertex " << id1 << " or " << id2 << " not found, skipping edge" << std::endl;
+            continue;
+        }
+        
+        // 【关键】基于优化后的位姿重新计算相对位姿
+        // T_ij_optimized = T_i^{-1} * T_j
+        SE3d Ti = optimized_poses.at(id1);
+        SE3d Tj = optimized_poses.at(id2);
+        SE3d updated_measurement = Ti.inverse() * Tj;
+        
+        // 也可以计算误差（与原始测量的差异）
+        SE3d original_measurement = std::get<2>(edge);
+        SE3d error = original_measurement.inverse() * updated_measurement;
+        Vector6d error_vec = error.log();
+        
+        // 输出更新后的相对位姿
+        Vector3d t = updated_measurement.translation();
+        Quaterniond q = updated_measurement.unit_quaternion();
+        
+        fout << "EDGE_SE3:QUAT " << id1 << " " << id2 << " "
+             << t.x() << " " << t.y() << " " << t.z() << " "
+             << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << " ";
+        
+        // 保存信息矩阵（与原信息矩阵相同）
+        for (int i = 0; i < 6; ++i) {
+            for (int j = i; j < 6; ++j) {
+                fout << info(i, j) << " ";
+            }
+        }
+        fout << std::endl;
+        
+        edge_count++;
+        
+        // 可选：打印误差统计
+        if (edge_count <= 5) {
+            std::cout << "Edge " << id1 << "->" << id2 
+                      << ": error norm = " << error_vec.norm() << std::endl;
+        }
+    }
+    
+    fout.close();
+    std::cout << "Saved " << optimized_poses.size() << " vertices and " 
+              << edge_count << " updated edges to " << filename << std::endl;
+}
 // ==================== 主函数 ====================
 int main(int argc, char** argv) {
     if (argc != 2) {
@@ -360,8 +440,18 @@ int main(int argc, char** argv) {
         optimized_poses[id] = SE3d::exp(xi);
     }
     
-    // ========== 保存结果 ==========
-    saveToG2O("result_ceres.g2o", optimized_poses, edges);
+
+/*
+如果你想输出一个可用于可视化的文件，当前方式完全正确。
+
+如果你想输出一个包含优化后相对约束的图（比如为了某种闭环检测），那才需要重新计算 edges：
+*/
+
+    // 1. 标准保存：只保存优化后的顶点，edges 保持原样
+    saveToG2O("result_ceres_standard.g2o", optimized_poses, edges);
+    
+    // 2. 保存更新后的 edges（基于优化后的位姿重新计算）
+    saveToG2OWithUpdatedEdges("result_ceres_with_updated_edges.g2o", optimized_poses, edges);
     
     std::cout << "\nDone!" << std::endl;
     
