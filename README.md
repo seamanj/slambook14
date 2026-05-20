@@ -11,6 +11,7 @@
 - **Sophus**：1.24.6  
 - **g2o**：1.0.0  
 - **gtsam**：4.3.0  
+- **fdow**: 0.0.1
 ---
 
 ## 说明
@@ -46,197 +47,236 @@
 
   为了应用g2o::LinearSolverCSparse, 我们需要在G2O里面支持CSPARSE. 具体用法见ch9_ex2
 
-1. 先安装suitesparse这个库
-```
-pacman -S mingw-w64-ucrt-x86_64-suitesparse
-```
-2. 再编译G2O带上`-DG2O_USE_CSPARSE=ON`
-```cmake
- cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=ON -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
+  1. 先安装suitesparse这个库
+  ```
+  pacman -S mingw-w64-ucrt-x86_64-suitesparse
+  ```
+  2. 再编译G2O带上`-DG2O_USE_CSPARSE=ON`
+  ```cmake
+  cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=ON -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
 
-```
+  ```
 
-3. 如果需要g2o_viewer, 我们需要先编译这个libQGLViewer这个库
-```
-git clone https://github.com/GillesDebunne/libQGLViewer.git
-cd libQGLViewer
-# 1. 先编译核心库 QGLViewer
-cd /d/Software/libQGLViewer/QGLViewer
+  3. 如果需要g2o_viewer, 我们需要先编译这个libQGLViewer这个库
+  ```
+  git clone https://github.com/GillesDebunne/libQGLViewer.git
+  cd libQGLViewer
+  # 1. 先编译核心库 QGLViewer
+  cd /d/Software/libQGLViewer/QGLViewer
 
-# 2. 清理之前的编译残留（如果有）
-make clean
+  # 2. 清理之前的编译残留（如果有）
+  make clean
 
-# 3. 生成 Makefile 并编译核心库
-qmake PREFIX=/ucrt64
-make -j32
+  # 3. 生成 Makefile 并编译核心库
+  qmake PREFIX=/ucrt64
+  make -j32
 
-# 4. 手动安装
-# QGLViewer没有make install, 需要自己手动复制
-# 查看当前目录下生成的库文件
-ls -la *.dll *.a 2>/dev/null
+  # 4. 手动安装
+  # QGLViewer没有make install, 需要自己手动复制
+  # 查看当前目录下生成的库文件
+  ls -la *.dll *.a 2>/dev/null
 
-# 查看是否已经安装到 /ucrt64 目录
-ls -la /ucrt64/lib/libQGLViewer* 2>/dev/null
-ls -la /ucrt64/bin/libQGLViewer* 2>/dev/null
+  # 查看是否已经安装到 /ucrt64 目录
+  ls -la /ucrt64/lib/libQGLViewer* 2>/dev/null
+  ls -la /ucrt64/bin/libQGLViewer* 2>/dev/null
 
-# 如果库文件只存在于当前目录而没有安装到系统目录，需要手动复制：
-# 手动复制库文件到系统目录
-cp -v libQGLViewer3.dll /ucrt64/bin/
-cp -v libQGLViewer3.a /ucrt64/lib/
-cp -v libQGLViewerd3.dll /ucrt64/bin/
-cp -v libQGLViewerd3.a /ucrt64/lib/
+  # 如果库文件只存在于当前目录而没有安装到系统目录，需要手动复制：
+  # 手动复制库文件到系统目录
+  cp -v libQGLViewer3.dll /ucrt64/bin/
+  cp -v libQGLViewer3.a /ucrt64/lib/
+  cp -v libQGLViewerd3.dll /ucrt64/bin/
+  cp -v libQGLViewerd3.a /ucrt64/lib/
 
-# 复制头文件
-cp -rv ../QGLViewer /ucrt64/include/
+  # 复制头文件
+  cp -rv ../QGLViewer /ucrt64/include/
 
-# 确认文件已复制成功
-ls -la /ucrt64/bin/libQGLViewer*.dll
-ls -la /ucrt64/lib/libQGLViewer*.a
-ls -la /ucrt64/include/QGLViewer/
-```
+  # 确认文件已复制成功
+  ls -la /ucrt64/bin/libQGLViewer*.dll
+  ls -la /ucrt64/lib/libQGLViewer*.a
+  ls -la /ucrt64/include/QGLViewer/
+  ```
 
-然后我们可以编译一下它自带的simpleViewer, 如果发现它用的QGLViewer2, 手动改为QGLViewer3
+  然后我们可以编译一下它自带的simpleViewer, 如果发现它用的QGLViewer2, 手动改为QGLViewer3
 
-```
-cd /d/Software/libQGLViewer/examples
-cp simpleViewer.pro simpleViewer.pro.bak
+  ```
+  cd /d/Software/libQGLViewer/examples
+  cp simpleViewer.pro simpleViewer.pro.bak
 
-sed -i 's/QGLViewer2/QGLViewer3/g' examples.pri
+  sed -i 's/QGLViewer2/QGLViewer3/g' examples.pri
 
-# 返回重新编译
-cd simpleViewer
-make clean
-qmake
-make -j32
-# 生成D:\Software\libQGLViewer\examples\simpleViewer\release\simpleViewer.exe
-```
-界面长这样:
-![simpleViewer](./resource/simpleViewer.png)
+  # 返回重新编译
+  cd simpleViewer
+  make clean
+  qmake
+  make -j32
+  # 生成D:\Software\libQGLViewer\examples\simpleViewer\release\simpleViewer.exe
+  ```
+  界面长这样:
+  ![simpleViewer](./resource/simpleViewer.png)
 
-4. 再编译G2O, `-DG2O_BUILD_APPS=ON`
-```cmake
-cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=ON -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DQGLVIEWER_INCLUDE_DIR=/ucrt64/include -DQGLVIEWER_LIBRARY=/ucrt64/lib/libQGLViewer3.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
-```
+  4. 再编译G2O, `-DG2O_BUILD_APPS=ON`
+  ```cmake
+  cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=/ucrt64 -DCMAKE_BUILD_TYPE=Release -DG2O_BUILD_APPS=ON -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_CSPARSE=ON -DCSPARSE_INCLUDE_DIR=/ucrt64/include/suitesparse -DCSPARSE_LIBRARY=/ucrt64/lib/libcxsparse.dll.a -DQGLVIEWER_INCLUDE_DIR=/ucrt64/include -DQGLVIEWER_LIBRARY=/ucrt64/lib/libQGLViewer3.a -DCMAKE_CXX_FLAGS="-I/ucrt64/include/suitesparse" -DCMAKE_C_FLAGS="-I/ucrt64/include/suitesparse"
+  ```
 
-打开g2o_viewer, 让我们加载第10章的位姿图文件, 界面长这样:
-![g2o_viewer](./resource/g2o_viewer.png)
+  打开g2o_viewer, 让我们加载第10章的位姿图文件, 界面长这样:
+  ![g2o_viewer](./resource/g2o_viewer.png)
 
 
-如果cmake找不到QGLViewer, 我们尝试下自己写个cmake配置
-```
-# 1. 创建 QGLViewer 的 CMake 配置文件目录
-mkdir -p /ucrt64/lib/cmake/QGLViewer
+  如果cmake找不到QGLViewer, 我们尝试下自己写个cmake配置
+  ```
+  # 1. 创建 QGLViewer 的 CMake 配置文件目录
+  mkdir -p /ucrt64/lib/cmake/QGLViewer
 
-# 2. 创建配置文件
-cat > /ucrt64/lib/cmake/QGLViewer/QGLViewerConfig.cmake << 'EOF'
-# QGLViewer configuration for Windows/MSYS2 UCRT64
-set(QGLVIEWER_FOUND TRUE)
-set(QGLVIEWER_INCLUDE_DIRS /ucrt64/include)
-set(QGLVIEWER_LIBRARIES /ucrt64/lib/libQGLViewer3.a)
-set(QGLVIEWER_LIBRARY ${QGLVIEWER_LIBRARIES})
-set(QGLVIEWER_INCLUDE_DIR ${QGLVIEWER_INCLUDE_DIRS})
+  # 2. 创建配置文件
+  cat > /ucrt64/lib/cmake/QGLViewer/QGLViewerConfig.cmake << 'EOF'
+  # QGLViewer configuration for Windows/MSYS2 UCRT64
+  set(QGLVIEWER_FOUND TRUE)
+  set(QGLVIEWER_INCLUDE_DIRS /ucrt64/include)
+  set(QGLVIEWER_LIBRARIES /ucrt64/lib/libQGLViewer3.a)
+  set(QGLVIEWER_LIBRARY ${QGLVIEWER_LIBRARIES})
+  set(QGLVIEWER_INCLUDE_DIR ${QGLVIEWER_INCLUDE_DIRS})
 
-# Create imported target
-add_library(QGLViewer::QGLViewer UNKNOWN IMPORTED)
-set_target_properties(QGLViewer::QGLViewer PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${QGLVIEWER_INCLUDE_DIRS}"
-    IMPORTED_LOCATION "${QGLVIEWER_LIBRARIES}"
-)
+  # Create imported target
+  add_library(QGLViewer::QGLViewer UNKNOWN IMPORTED)
+  set_target_properties(QGLViewer::QGLViewer PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${QGLVIEWER_INCLUDE_DIRS}"
+      IMPORTED_LOCATION "${QGLVIEWER_LIBRARIES}"
+  )
 
-# Also create non-namespaced target for compatibility
-add_library(QGLViewer UNKNOWN IMPORTED)
-set_target_properties(QGLViewer PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${QGLVIEWER_INCLUDE_DIRS}"
-    IMPORTED_LOCATION "${QGLVIEWER_LIBRARIES}"
-)
-EOF
-```
+  # Also create non-namespaced target for compatibility
+  add_library(QGLViewer UNKNOWN IMPORTED)
+  set_target_properties(QGLViewer PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${QGLVIEWER_INCLUDE_DIRS}"
+      IMPORTED_LOCATION "${QGLVIEWER_LIBRARIES}"
+  )
+  EOF
+  ```
 
 
 
 - **gstam**  
 用于基于因子图的概率建模与非线性优化，支持 SLAM、三维重建与位姿图优化等问题的增量式求解。
 
-gstam对MinGW支持比较差, 在Windows上默认支持MSVC, 所以我们需要手动改下:
+  gstam对MinGW支持比较差, 在Windows上默认支持MSVC, 所以我们需要手动改下:
 
-1. 打开`gstam\gstam\CMakeLists.txt`
-将
-```
-set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "/w")
-```
-改成
-```
-if(WIN32)
-  if(MSVC)
-    set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "/w")
+  1. 打开`gstam\gstam\CMakeLists.txt`
+  将
+  ```
+  set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "/w")
+  ```
+  改成
+  ```
+  if(WIN32)
+    if(MSVC)
+      set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "/w")
+    else()
+      set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "-w")
+    endif()
   else()
-    set_source_files_properties(${3rdparty_srcs} PROPERTIES COMPILE_FLAGS "-w")
+  ```
+
+  注释掉    `#constrained`
+
+  2. 打开`gstam\cmake\GtsamBuildTypes.cmake`
+  注释掉
+  `#-Werror                                        # Enable warnings as errors`
+  3. 打开 `gtsam\gtsam\3rdparty\cephes\CMakeLists.txt`
+  类似修改WIN32部分
+  ```
+  if(WIN32)
+    if(MSVC)
+      set_target_properties(cephes-gtsam PROPERTIES COMPILE_FLAGS /w)
+    else()
+      set_target_properties(cephes-gtsam PROPERTIES COMPILE_FLAGS -w)
+    endif()
   endif()
-else()
-```
+  ```
+  4. 打开`gtsam\cmake\dllexport.h.in`
+  将WIN32部分改成
+  ```
+  #ifdef _WIN32
+  #  ifndef GTSAM_SHARED_LIB
+  #    define @library_name@_EXPORT
+  #    define @library_name@_EXTERN_EXPORT extern
+  #  else
+  #    ifdef @library_name@_EXPORTS
+  #      ifdef GTSAM_MINGW
+          // MinGW 使用 GCC 可见性属性，而不是 __declspec
+  #        define @library_name@_EXPORT __attribute__((visibility("default")))
+  #        define @library_name@_EXTERN_EXPORT __attribute__((visibility("default"))) extern
+  #      else
+          // MSVC 使用 __declspec
+  #        define @library_name@_EXPORT __declspec(dllexport)
+  #        define @library_name@_EXTERN_EXPORT __declspec(dllexport) extern
+  #      endif
+  #    else
+  #      ifdef GTSAM_MINGW
+          // MinGW 导入时不需要特殊标记
+  #        define @library_name@_EXPORT
+  #        define @library_name@_EXTERN_EXPORT extern
+  #      else
+  #        define @library_name@_EXPORT __declspec(dllimport)
+  #        define @library_name@_EXTERN_EXPORT __declspec(dllimport)
+  #      endif
+  #    endif
+  #  endif
+  #else
+  ```
+  5. 最后编译 
 
-注释掉    `#constrained`
+  ```
+  cmake .. \
+    -G "MinGW Makefiles" \
+    -DCMAKE_INSTALL_PREFIX=/ucrt64 \
+    -DGTSAM_BUILD_TESTS=OFF \
+    -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+    -DGTSAM_SUPPORT_NESTED_DISSECTION=OFF \
+    -DGTSAM_WITH_TBB=OFF \
+    -DGTSAM_USE_SYSTEM_EIGEN=ON \
+    -DGTSAM_BUILD_UNSTABLE=OFF \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_CXX_FLAGS="-D_USE_MATH_DEFINES -fpermissive"
+  ```
 
-2. 打开`gstam\cmake\GtsamBuildTypes.cmake`
-注释掉
-`#-Werror                                        # Enable warnings as errors`
-3. 打开 `gtsam\gtsam\3rdparty\cephes\CMakeLists.txt`
-类似修改WIN32部分
-```
-if(WIN32)
-  if(MSVC)
-    set_target_properties(cephes-gtsam PROPERTIES COMPILE_FLAGS /w)
-  else()
-    set_target_properties(cephes-gtsam PROPERTIES COMPILE_FLAGS -w)
-  endif()
-endif()
-```
-4. 打开`gtsam\cmake\dllexport.h.in`
-将WIN32部分改成
-```
-#ifdef _WIN32
-#  ifndef GTSAM_SHARED_LIB
-#    define @library_name@_EXPORT
-#    define @library_name@_EXTERN_EXPORT extern
-#  else
-#    ifdef @library_name@_EXPORTS
-#      ifdef GTSAM_MINGW
-         // MinGW 使用 GCC 可见性属性，而不是 __declspec
-#        define @library_name@_EXPORT __attribute__((visibility("default")))
-#        define @library_name@_EXTERN_EXPORT __attribute__((visibility("default"))) extern
-#      else
-         // MSVC 使用 __declspec
-#        define @library_name@_EXPORT __declspec(dllexport)
-#        define @library_name@_EXTERN_EXPORT __declspec(dllexport) extern
-#      endif
-#    else
-#      ifdef GTSAM_MINGW
-         // MinGW 导入时不需要特殊标记
-#        define @library_name@_EXPORT
-#        define @library_name@_EXTERN_EXPORT extern
-#      else
-#        define @library_name@_EXPORT __declspec(dllimport)
-#        define @library_name@_EXTERN_EXPORT __declspec(dllimport)
-#      endif
-#    endif
-#  endif
-#else
-```
-5. 最后编译 
 
-```
-cmake .. \
-  -G "MinGW Makefiles" \
-  -DCMAKE_INSTALL_PREFIX=/ucrt64 \
-  -DGTSAM_BUILD_TESTS=OFF \
-  -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
-  -DGTSAM_SUPPORT_NESTED_DISSECTION=OFF \
-  -DGTSAM_WITH_TBB=OFF \
-  -DGTSAM_USE_SYSTEM_EIGEN=ON \
-  -DGTSAM_BUILD_UNSTABLE=OFF \
-  -DBUILD_SHARED_LIBS=OFF \
-  -DCMAKE_CXX_FLAGS="-D_USE_MATH_DEFINES -fpermissive"
-```
+- **fdow** 
+  FBOW（Fast Bag of Words，快速词袋模型）是 DBow2/DBow3 库的一个高度优化版本。该库利用 AVX、SSE 和 MMX 指令集进行深度优化，显著提升了词袋向量的生成速度。在加载词汇表时，fbow 比 DBOW2 快约 80 倍（参见 tests 目录并自行测试）。在支持 AVX 指令集的机器上将图像转换为词袋向量时，其速度约为 DBOW2 的 6.4 倍。
+
+  在mingw上使用, 需要修改一处地方. 打开`D:/Software/fbow/src/cpu.h`
+
+  将
+  ```
+  #   if _WIN32
+  #include <Windows.h>
+  #include <intrin.h>
+  #   elif defined(__GNUC__) || defined(__clang__)
+  #include <cpuid.h>
+  #define _XCR_XFEATURE_ENABLED_MASK  0
+  #   else
+  #       error "No cpuid intrinsic defined for compiler."
+  #   endif
+  ```
+  替换成
+  ```
+  #   if _WIN32
+  #include <Windows.h>
+  #include <intrin.h>
+  // 对于 MinGW，定义缺失的宏
+  #ifndef _XCR_XFEATURE_ENABLED_MASK
+  #define _XCR_XFEATURE_ENABLED_MASK 0
+  #endif
+  #   elif defined(__GNUC__) || defined(__clang__)
+  #include <cpuid.h>
+  #ifndef _XCR_XFEATURE_ENABLED_MASK
+  #define _XCR_XFEATURE_ENABLED_MASK 0
+  #endif
+  #   else
+  #       error "No cpuid intrinsic defined for compiler."
+  #   endif
+  ```
+
+
 
 
 ---
