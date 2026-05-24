@@ -9,13 +9,12 @@ set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
-# DBoW3
-set(DBoW3_DIR "D:/Software/msys64/ucrt64/cmake/DBoW3")
-find_package(DBoW3 REQUIRED)
-include_directories(${DBoW3_INCLUDE_DIRS})
+# fbow
+find_package(fbow REQUIRED)
+include_directories(${fbow_INCLUDE_DIRS})
 
 add_executable(loop_closure loop_closure.cpp)
 target_link_libraries(loop_closure 
     ${OpenCV_LIBS} 
-    ${DBoW3_LIBS}
+    ${fbow_LIBS}
 )

@@ -12,6 +12,8 @@
 - **g2o**：1.0.0  
 - **gtsam**：4.3.0  
 - **fdow**: 0.0.1
+- **PCL**: 1.15.1 
+- **Octomap**: 1.10.0
 ---
 
 ## 说明
@@ -239,6 +241,45 @@
     -DCMAKE_CXX_FLAGS="-D_USE_MATH_DEFINES -fpermissive"
   ```
 
+- **DBow3** 
+  DBoW3 是 DBow2 库的改进版本，这是一个开源的 C++ 库，主要用于将图像索引并转换为词袋表示。它通过实现分层树结构，在图像特征空间中进行近似最近邻搜索，从而创建视觉词汇表。此外，DBoW3 还实现了一个带有倒排文件和直接文件的图像数据库，用于对图像进行索引，支持快速查询和特征比较。
+
+  在 Windows 上，LIB_INSTALL_DIR 变量没有被正确设置。我们需要修改下CMakeLists.txt
+  ```cmake
+  if(WIN32)
+    # Postfix of DLLs:
+    SET(PROJECT_DLLVERSION "${PROJECT_VERSION_MAJOR}${PROJECT_VERSION_MINOR}${PROJECT_VERSION_PATCH}")
+    SET(RUNTIME_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin CACHE PATH "Directory for dlls and binaries")
+    SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin CACHE PATH "Directory for binaries")
+    SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin CACHE PATH "Directory for dlls")
+    # 添加这一行：为 Windows 设置 LIB_INSTALL_DIR
+    set(LIB_INSTALL_DIR "cmake" CACHE STRING "Install location of CMake config files")
+  else()
+    # Postfix of so's:
+    set(PROJECT_DLLVERSION)
+    set(LIB_INSTALL_DIR lib CACHE STRING "Install location of libraries (e.g. lib32 or lib64 for multilib installations)")
+    SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/cmake/ /usr/${LIB_INSTALL_DIR}/cmake )
+  endif()
+  ```
+  后面两行改为
+  ```
+  #INSTALL(FILES "${PROJECT_BINARY_DIR}/Find${PROJECT_NAME}.cmake" DESTINATION ${LIB_INSTALL_DIR}/cmake/ )
+  INSTALL(FILES "${PROJECT_BINARY_DIR}/Find${PROJECT_NAME}.cmake" DESTINATION ${LIB_INSTALL_DIR} )
+  #INSTALL(FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake" DESTINATION ${LIB_INSTALL_DIR}/cmake/${PROJECT_NAME} )
+  INSTALL(FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake" DESTINATION ${LIB_INSTALL_DIR}/${PROJECT_NAME} )
+  ```
+
+  在CMakeLists.txt文件里面
+  ```
+  # DBoW3
+  set(DBoW3_DIR "D:/Software/msys64/ucrt64/cmake/DBoW3")
+  find_package(DBoW3 REQUIRED)
+  include_directories(${DBoW3_INCLUDE_DIRS})
+
+  target_link_libraries(XXXXX 
+      ${DBoW3_LIBS}
+  )
+  ```
 
 - **fdow** 
   FBOW（Fast Bag of Words，快速词袋模型）是 DBow2/DBow3 库的一个高度优化版本。该库利用 AVX、SSE 和 MMX 指令集进行深度优化，显著提升了词袋向量的生成速度。在加载词汇表时，fbow 比 DBOW2 快约 80 倍（参见 tests 目录并自行测试）。在支持 AVX 指令集的机器上将图像转换为词袋向量时，其速度约为 DBOW2 的 6.4 倍。
@@ -276,9 +317,57 @@
   #   endif
   ```
 
+- **PCL** 
+  The Point Cloud Library (PCL) is a standalone, large scale, open project for 2D/3D image and point cloud processing.
+
+    ```cmake
+    cmake .. -G "MinGW Makefiles" \
+        -DCMAKE_INSTALL_PREFIX=/ucrt64 \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_visualization=OFF \
+        -DBUILD_apps=OFF \
+        -DBUILD_examples=OFF \
+        -DBUILD_tools=OFF \
+        -DBUILD_surface=ON
+    ```
 
 
+- **Octomap** 
+  Octomap 是一个基于八叉树（Octree）的 3D 占据网格建图库，支持概率更新、多分辨率表示，常用于机器人导航与三维环境建模。
 
+
+  如何不需要编译OCTOVIS
+  ```cmake
+  cmake .. -G "MinGW Makefiles" \
+      -DCMAKE_INSTALL_PREFIX=/ucrt64 \
+      -DBUILD_OCTOVIS_SUBPROJECT=OFF 
+  ```
+
+  如何需要编译OCTOVIS
+  cmake .. -G "MinGW Makefiles" \
+    -DCMAKE_INSTALL_PREFIX=/ucrt64 \
+    -DOCTOVIS_USE_QGLVIEWER=installed \
+    -DQGLViewer_INCLUDE_DIR=/ucrt64/include \
+    -DQGLViewer_LIBRARY=/ucrt64/lib/libQGLViewer3.a \
+    -DCMAKE_CXX_FLAGS="-I/ucrt64/include/QGLViewer"
+
+
+  将D:\Software\octomap\octovis\CMakeLists.txt文件中
+  ```
+  set(octovis_SOURCES
+      src/SceneObject.cpp src/PointcloudDrawer.cpp src/OcTreeDrawer.cpp
+      src/SelectionBox.cpp src/TrajectoryDrawer.cpp src/ColorOcTreeDrawer.cpp
+  )
+  ```
+  改成
+  ```
+  set(octovis_SOURCES
+      src/SceneObject.cpp src/PointcloudDrawer.cpp src/OcTreeDrawer.cpp
+      src/SelectionBox.cpp src/TrajectoryDrawer.cpp src/ColorOcTreeDrawer.cpp
+      src/ViewerGui.cpp src/ViewerWidget.cpp src/ViewerSettings.cpp
+      src/ViewerSettingsPanel.cpp src/ViewerSettingsPanelCamera.cpp src/CameraFollowMode.cpp
+  )
+  ```
 ---
 
 ## 兼容性说明
