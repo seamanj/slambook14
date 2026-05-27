@@ -1,0 +1,13 @@
+%YAML:1.0
+---
+dataset_dir: "D:/datasets/kitti/dataset/sequences/05"
+camera.fx: 707.0912
+camera.fy: 707.0912
+camera.cx: 601.8873
+camera.cy: 183.1104
+camera.baseline: 0.537
+num_features: 150
+num_features_init: 50
+num_features_tracking: 50
+camera.fps: 10
+camera.depth_scale: 0

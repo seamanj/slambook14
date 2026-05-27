@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(gdb) Launch",
+            "type": "cppdbg",
+            "request": "launch",
+            "targetArchitecture": "x64",  // 改为 x64
+            "program": "${command:cmake.launchTargetPath}",
+            "args": [
+                "--config_file",
+                "${workspaceFolder}/config/myconfig.yaml"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "${workspaceFolder}/build/lib;${env:PATH}"  // 修复环境变量顺序
+                }
+            ],
+            "externalConsole": true,  // 改为 true 以便看到输出
+            "MIMode": "gdb",
+            "miDebuggerPath": "D:\\Software\\msys64\\ucrt64\\bin\\gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

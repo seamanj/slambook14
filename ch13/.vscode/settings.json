@@ -1,0 +1,39 @@
+{
+    "cmake.configureOnOpen": false,
+    "files.associations": {
+        "ostream": "cpp",
+        "mutex": "cpp",
+        "array": "cpp",
+        "string": "cpp",
+        "string_view": "cpp"
+    },
+    "C_Cpp.default.compilerPath": "D:\\Software\\msys64\\ucrt64\\bin\\g++.exe",
+    "cmake.debugConfig": {
+        "args": [
+            "--config_file=${workspaceFolder}/config/myconfig.yaml"
+        ],
+        "cwd": "${workspaceFolder}/build/bin",
+        "environment": [
+            {
+                "name": "PATH",
+                "value": "${workspaceFolder}/build/lib;${env:PATH}"
+            }
+        ]
+    }
+}
+
+
+
+// settings.json 中的 cmake.debugConfig
+// 使用者：CMake Tools 扩展
+
+// 触发方式：点击 VSCode 底部状态栏的虫子图标 🔴 或者按 Ctrl+F5
+
+// 作用：配置 CMake Tools 自己的调试器
+
+// launch.json
+// 使用者：VSCode 原生的 C++ 调试器（cppdbg）
+
+// 触发方式：按 F5 或者点击侧边栏的虫子图标 🐞，然后选择配置
+
+// 作用：配置 VSCode 原生的调试器
